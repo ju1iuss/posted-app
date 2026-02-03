@@ -63,6 +63,7 @@ export interface TemplateLayer {
   image_id?: string | null
   image_collection_id?: string | null
   image_source_type?: ImageSourceType | null
+  is_fixed?: boolean | null
   
   created_at?: string
 }

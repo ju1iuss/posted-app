@@ -83,29 +83,33 @@ export function EditorCanvas({
       }
 
       // Handle random collections
-      const newRandomIds = { ...randomImageIds }
+      const newRandomIds: Record<string, string> = {}
       let changed = false
 
       for (const req of randomCollectionsToFetch) {
-        const key = req.type === 'slide' ? `slide-${slide?.id}` : `layer-${req.layerId}`
-        if (!newRandomIds[key]) {
-          const { data } = await supabase
-            .from('collection_images')
-            .select('image_id')
-            .eq('collection_id', req.id)
+        // Include collection_id in key so changing collection picks new random image
+        const key = req.type === 'slide' 
+          ? `slide-${slide?.id}-collection-${req.id}` 
+          : `layer-${req.layerId}-collection-${req.id}`
+        
+        // Always pick a new random image when collection changes
+        const { data } = await supabase
+          .from('collection_images')
+          .select('image_id')
+          .eq('collection_id', req.id)
+        
+        if (data && data.length > 0) {
+          const randomIndex = Math.floor(Math.random() * data.length)
+          const selectedImageId = data[randomIndex].image_id
           
-          if (data && data.length > 0) {
-            const randomIndex = Math.floor(Math.random() * data.length)
-            newRandomIds[key] = data[randomIndex].image_id
-            imageIds.add(data[randomIndex].image_id)
-            changed = true
-          }
-        } else {
-          imageIds.add(newRandomIds[key])
+          // Always set new random image (don't check if it changed, just pick new one)
+          newRandomIds[key] = selectedImageId
+          changed = true
+          imageIds.add(selectedImageId)
         }
       }
 
-      if (changed) {
+      if (changed || Object.keys(newRandomIds).length > 0) {
         setRandomImageIds(newRandomIds)
       }
 
@@ -129,7 +133,14 @@ export function EditorCanvas({
     }
 
     loadImageUrls()
-  }, [slide, layers, supabase]) // Simplified dependency array to re-run when slide/layers change
+  }, [
+    slide?.id,
+    slide?.background_type,
+    slide?.background_collection_id,
+    slide?.background_image_id,
+    JSON.stringify(layers.map(l => ({ id: l.id, source: l.image_source_type, collection: l.image_collection_id, image: l.image_id }))),
+    supabase
+  ]) // Re-run when collections or layers change
 
   // Base size for the canvas (we scale everything from this)
   const baseWidth = 400 // Base visual width in pixels at zoom 1.0
@@ -234,14 +245,16 @@ export function EditorCanvas({
               alt="Background"
               fill
               className="object-cover"
+              unoptimized
             />
           )}
-          {slide?.background_type === 'collection_random' && slide.background_collection_id && !slide.video_url && imageUrls[randomImageIds[`slide-${slide.id}`]] && (
+          {slide?.background_type === 'collection_random' && slide.background_collection_id && !slide.video_url && imageUrls[randomImageIds[`slide-${slide.id}-collection-${slide.background_collection_id}`]] && (
             <Image
-              src={imageUrls[randomImageIds[`slide-${slide.id}`]]}
+              src={imageUrls[randomImageIds[`slide-${slide.id}-collection-${slide.background_collection_id}`]]}
               alt="Background"
               fill
               className="object-cover"
+              unoptimized
             />
           )}
           {slide?.background_type === 'image' && slide.background_image_url && !slide.background_image_id && !slide.video_url && (
@@ -250,6 +263,7 @@ export function EditorCanvas({
               alt="Background"
               fill
               className="object-cover"
+              unoptimized
             />
           )}
         </div>
@@ -268,13 +282,13 @@ export function EditorCanvas({
               imageUrl={
                 layer.image_id 
                   ? imageUrls[layer.image_id] 
-                  : layer.image_source_type === 'collection_random'
-                    ? imageUrls[randomImageIds[`layer-${layer.id}`]]
+                  : layer.image_source_type === 'collection_random' && layer.image_collection_id
+                    ? imageUrls[randomImageIds[`layer-${layer.id}-collection-${layer.image_collection_id}`]]
                     : undefined
               }
               onSelect={() => layer.id && onSelectLayer(layer.id)}
               onUpdate={(updates) => layer.id && onUpdateLayer(layer.id, updates)}
-              onDelete={() => layer.id && onDeleteLayer(layer.id)}
+              onDelete={() => layer.id && onDeleteLayer?.(layer.id)}
               readOnly={readOnly}
             />
           ))}

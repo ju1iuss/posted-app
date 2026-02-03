@@ -9,6 +9,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Image URLs are required' }, { status: 400 })
     }
 
+    const supabase = await createClient()
+
+    // Check credits
+    if (organizationId) {
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .select('credits')
+        .eq('id', organizationId)
+        .single()
+
+      if (orgError || !org || org.credits <= 0) {
+        return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 })
+      }
+
+      // Deduct one credit
+      const { error: updateError } = await supabase
+        .from('organizations')
+        .update({ credits: org.credits - 1 })
+        .eq('id', organizationId)
+
+      if (updateError) {
+        return NextResponse.json({ error: 'Failed to deduct credits' }, { status: 500 })
+      }
+    }
+
     const falKey = process.env.FAL_KEY
     if (!falKey) {
       return NextResponse.json({ error: 'FAL_KEY not configured' }, { status: 500 })
@@ -76,7 +101,6 @@ export async function POST(request: NextRequest) {
     const generatedImageUrl = result.images[0].url
 
     // Save to Supabase
-    const supabase = await createClient()
     const { data: imageData, error: imageError } = await supabase
       .from('images')
       .insert({
@@ -98,9 +122,22 @@ export async function POST(request: NextRequest) {
       // Still return the URL even if DB save fails, but maybe log it
     }
 
+    // Get the new credits count for the response
+    let newCredits: number | undefined
+    if (organizationId) {
+      const { data: updatedOrg } = await supabase
+        .from('organizations')
+        .select('credits')
+        .eq('id', organizationId)
+        .single()
+      newCredits = updatedOrg?.credits
+    }
+
     return NextResponse.json({
       success: true,
-      image: imageData || { url: generatedImageUrl }
+      image: imageData || { url: generatedImageUrl },
+      newCredits,
+      organizationId
     })
 
   } catch (error: any) {

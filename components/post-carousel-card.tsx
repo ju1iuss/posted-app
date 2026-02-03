@@ -20,13 +20,19 @@ import {
   DropdownMenuSubContent,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
-import { ChevronLeft, ChevronRight, MoreHorizontal, Download, Trash2, Circle, CheckCircle2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, MoreHorizontal, Download, Trash2, Circle, CheckCircle2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from '@/lib/utils'
+import html2canvas from 'html2canvas'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 
 interface PostContent {
   template_id: string
+  title?: string
+  caption?: string
   slides: {
     slide_id: string
     position: number
@@ -45,6 +51,8 @@ interface PostCarouselCardProps {
   postId: string
   postContent: PostContent | null
   status?: PostStatus
+  title?: string
+  caption?: string
   onDelete?: () => void
   onExpand?: () => void
   onStatusChange?: (status: PostStatus) => void
@@ -55,6 +63,8 @@ export function PostCarouselCard({
   postId,
   postContent,
   status = 'ready',
+  title,
+  caption,
   onDelete,
   onExpand,
   onStatusChange,
@@ -68,6 +78,7 @@ export function PostCarouselCard({
   const [current, setCurrent] = useState(0)
   const [count, setCount] = useState(0)
   const [imageUrlMap, setImageUrlMap] = useState<Map<string, string>>(new Map())
+  const [isExporting, setIsExporting] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
@@ -87,6 +98,7 @@ export function PostCarouselCard({
     }
 
     async function loadPostData() {
+      if (!postContent?.template_id) return
       setLoading(true)
       try {
         // Fetch template
@@ -145,7 +157,9 @@ export function PostCarouselCard({
         // Create map of layer_id -> text_content from post content
         postContent.slides.forEach(slide => {
           slide.layers.forEach(layer => {
-            contentMap.set(layer.layer_id, layer.text_content)
+            if (layer.text_content) {
+              contentMap.set(layer.layer_id, layer.text_content)
+            }
           })
         })
 
@@ -196,28 +210,246 @@ export function PostCarouselCard({
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (!confirm('Are you sure you want to delete this post?')) return
-
-    try {
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .eq('id', postId)
-
-      if (error) throw error
-
-      toast.success('Post deleted')
-      onDelete?.()
-    } catch (error: any) {
-      console.error('Error deleting post:', error)
-      toast.error(error.message || 'Failed to delete post')
-    }
+    onDelete?.()
   }
 
-  const handleDownload = async (e: React.MouseEvent) => {
+  const handleDownload = async (e: React.MouseEvent, type: 'separate' | 'with-text' | 'first-slide-separate') => {
     e.stopPropagation()
-    toast.info('Download functionality coming soon')
-    // TODO: Implement download using html2canvas or similar
+    
+    if (!template || sortedSlides.length === 0) {
+      toast.error('No slides to export')
+      return
+    }
+
+    setIsExporting(true)
+    toast.info('Preparing download...')
+
+    try {
+      const zip = new JSZip()
+      const imagesFolder = zip.folder('images')
+      
+      // Get title and caption
+      const postTitle = title || postContent?.title || ''
+      const postCaption = caption || postContent?.caption || ''
+      
+      // Add text file to zip
+      const textContent = `TITLE:\n${postTitle}\n\nCAPTION:\n${postCaption}`
+      zip.file('post-text.txt', textContent)
+
+      // Create a hidden container for full-resolution rendering
+      const exportContainer = document.createElement('div')
+      exportContainer.style.cssText = `
+        position: fixed;
+        left: -99999px;
+        top: 0;
+        z-index: -1;
+      `
+      document.body.appendChild(exportContainer)
+
+      // Export each slide
+      for (let i = 0; i < sortedSlides.length; i++) {
+        const slide = sortedSlides[i]
+        const slideLayers = layers[slide.id || ''] || []
+        
+        // Determine if we should include text for this slide
+        const hideText = type === 'separate' || 
+          (type === 'first-slide-separate' && i === 0)
+        
+        // Filter layers based on export type
+        const exportLayers = hideText 
+          ? slideLayers.filter(l => l.type !== 'text')
+          : slideLayers
+
+        // Create the slide element
+        const slideElement = document.createElement('div')
+        slideElement.style.cssText = `
+          width: ${template.width}px;
+          height: ${template.height}px;
+          position: relative;
+          overflow: hidden;
+        `
+        
+        // Add background
+        if (slide.background_type === 'color' && slide.background_color) {
+          slideElement.style.backgroundColor = slide.background_color
+        } else {
+          slideElement.style.backgroundColor = '#ffffff'
+        }
+        
+        // Add background image if exists
+        if (slide.background_image_url && !slide.video_url) {
+          const bgDiv = document.createElement('div')
+          bgDiv.style.cssText = `
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("${slide.background_image_url}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+          `
+          slideElement.appendChild(bgDiv)
+          
+          // Pre-load the image
+          const bgImageUrl = slide.background_image_url
+          if (bgImageUrl) {
+            await new Promise((resolve) => {
+              const img = new Image()
+              img.crossOrigin = 'anonymous'
+              img.onload = resolve
+              img.onerror = () => {
+                console.warn('Background image failed to load:', bgImageUrl)
+                resolve(null)
+              }
+              img.src = bgImageUrl
+              setTimeout(resolve, 5000)
+            })
+          }
+        }
+        
+        // Add layers
+        for (const layer of [...exportLayers].sort((a, b) => a.position - b.position)) {
+          const layerDiv = document.createElement('div')
+          
+          // Base positioning
+          layerDiv.style.position = 'absolute'
+          layerDiv.style.left = `${layer.x}%`
+          layerDiv.style.top = `${layer.y}%`
+          layerDiv.style.width = `${layer.width}%`
+          layerDiv.style.transform = 'translate(-50%, -50%)'
+          layerDiv.style.zIndex = String(10 + (layer.position || 0))
+          
+          if (layer.type === 'image') {
+            const hasHeight = layer.height !== undefined && layer.height !== null && layer.height > 0
+            if (hasHeight) {
+              layerDiv.style.height = `${layer.height}%`
+            }
+          }
+          
+          if (layer.type === 'text') {
+            // Text layer styling
+            const fontSize = layer.font_size || 48
+            const strokeWidth = layer.stroke_width || 0
+            
+            const textDiv = document.createElement('div')
+            textDiv.style.fontFamily = `${layer.font_family || 'TikTok Sans'}, sans-serif`
+            textDiv.style.fontSize = `${fontSize}px`
+            textDiv.style.lineHeight = '1.2'
+            textDiv.style.fontWeight = String(layer.font_weight || 'bold')
+            textDiv.style.color = layer.text_color || '#ffffff'
+            textDiv.style.textAlign = layer.text_align || 'center'
+            textDiv.style.width = '100%'
+            textDiv.style.wordWrap = 'break-word'
+            textDiv.style.whiteSpace = 'pre-wrap'
+            
+            // Text shadow/stroke
+            if (strokeWidth > 0 && layer.stroke_color) {
+              textDiv.style.textShadow = `
+                -${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
+                ${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
+                -${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color},
+                ${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color}
+              `
+            }
+            
+            // Background color handling
+            if (layer.background_color) {
+              const span = document.createElement('span')
+              span.style.backgroundColor = layer.background_color
+              span.style.padding = '6px 12px'
+              span.style.borderRadius = '8px'
+              span.style.display = 'inline-block'
+              span.innerText = layer.text_content || ''
+              textDiv.appendChild(span)
+            } else {
+              textDiv.innerText = layer.text_content || ''
+            }
+            
+            layerDiv.appendChild(textDiv)
+          } else if (layer.type === 'image') {
+            const imgUrl = imageUrlMap.get(layer.id || '') || (layer as any).image_url
+            
+            if (imgUrl) {
+              const innerImgDiv = document.createElement('div')
+              innerImgDiv.style.cssText = `
+                width: 100%;
+                height: 100%;
+                border-radius: 12px;
+                background-image: url("${imgUrl}");
+                background-size: cover;
+                background-position: center;
+                background-repeat: no-repeat;
+              `
+              layerDiv.appendChild(innerImgDiv)
+              
+              // Pre-load the image
+              await new Promise((resolve) => {
+                const img = new Image()
+                img.crossOrigin = 'anonymous'
+                img.onload = resolve
+                img.onerror = () => {
+                  console.warn('Layer image failed to load:', imgUrl)
+                  resolve(null)
+                }
+                img.src = imgUrl
+                setTimeout(resolve, 5000)
+              })
+            }
+          } else if (layer.type === 'shape') {
+            const shapeLayer = layer as any
+            layerDiv.style.backgroundColor = shapeLayer.fill_color || '#cccccc'
+            layerDiv.style.borderRadius = `${shapeLayer.border_radius || 0}px`
+            layerDiv.style.opacity = String(shapeLayer.opacity !== undefined ? shapeLayer.opacity / 100 : 1)
+          }
+          
+          slideElement.appendChild(layerDiv)
+        }
+        
+        exportContainer.innerHTML = ''
+        exportContainer.appendChild(slideElement)
+        
+        // Wait for rendering and fonts to load
+        await new Promise(resolve => setTimeout(resolve, 300))
+        
+        // Capture with html2canvas
+        const canvas = await html2canvas(slideElement, {
+          width: template.width,
+          height: template.height,
+          scale: 1,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          logging: false,
+        })
+        
+        // Convert to blob and add to zip
+        const imageBlob = await new Promise<Blob>((resolve) => {
+          canvas.toBlob((blob) => {
+            resolve(blob!)
+          }, 'image/png', 1.0)
+        })
+        
+        const fileName = `slide-${String(i + 1).padStart(2, '0')}.png`
+        imagesFolder?.file(fileName, imageBlob)
+      }
+      
+      // Clean up
+      document.body.removeChild(exportContainer)
+      
+      // Generate and download zip
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const timestamp = new Date().toISOString().slice(0, 10)
+      saveAs(zipBlob, `post-${timestamp}-${postId.slice(0, 8)}.zip`)
+      
+      toast.success('Download complete!')
+    } catch (error: any) {
+      console.error('Export error:', error)
+      toast.error('Failed to export: ' + (error.message || 'Unknown error'))
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   const handleStatusChange = async (newStatus: PostStatus) => {
@@ -331,13 +563,37 @@ export function PostCarouselCard({
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
             </DropdownMenuSub>
-            <DropdownMenuItem 
-              onClick={handleDownload}
-              className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
-            >
-              <Download className="size-3" />
-              Download
-            </DropdownMenuItem>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger 
+                disabled={isExporting}
+                className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
+              >
+                {isExporting ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
+                {isExporting ? 'Exporting...' : 'Download'}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="bg-zinc-800 border-zinc-700">
+                <DropdownMenuItem 
+                  onClick={(e) => handleDownload(e as any, 'with-text')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700 flex items-center justify-between gap-2"
+                >
+                  <span>Download</span>
+                  <span className="px-1.5 py-0.5 text-[9px] font-bold bg-zinc-700 text-zinc-300 rounded-full">Default</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={(e) => handleDownload(e as any, 'separate')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                >
+                  Images without text
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={(e) => handleDownload(e as any, 'first-slide-separate')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                >
+                  First slide without text
+                </DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator className="bg-zinc-700" />
             <DropdownMenuItem 
               onClick={handleDelete}
               className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-zinc-700"

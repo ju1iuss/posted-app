@@ -43,9 +43,21 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import { TemplateSelectorModal } from "@/components/template-selector-modal"
+import { CreditLimitModal } from "@/components/credit-limit-modal"
 import { PostCarouselCard } from "@/components/post-carousel-card"
 import { PostPreviewModal } from "@/components/post-preview-modal"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 const PROFILE_IMAGES = [
   "304f3d97891b0e150af1af0865bc7293.jpg",
@@ -66,10 +78,13 @@ export default function AccountPage() {
   const [isUpdating, setIsUpdating] = useState(false)
   const [templates, setTemplates] = useState<any[]>([])
   const [showTemplateModal, setShowTemplateModal] = useState(false)
+  const [showCreditModal, setShowCreditModal] = useState(false)
   const [generatingPost, setGeneratingPost] = useState(false)
   const [pendingPostId, setPendingPostId] = useState<string | null>(null)
   const [selectedPost, setSelectedPost] = useState<any>(null)
   const [showPostModal, setShowPostModal] = useState(false)
+  const [postToDelete, setPostToDelete] = useState<string | null>(null)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   
   const supabase = useMemo(() => createClient(), [])
 
@@ -78,10 +93,10 @@ export default function AccountPage() {
       if (!accountId) return
 
       try {
-        // Fetch account first
+        // Fetch account first with organization credits
         const { data: accountData, error: accountError } = await supabase
           .from('accounts')
-          .select('*')
+          .select('*, organizations(credits)')
           .eq('id', accountId)
           .single()
 
@@ -304,6 +319,13 @@ export default function AccountPage() {
   }
 
   const handleGeneratePost = async () => {
+    // Check credits
+    const currentCredits = (account?.organizations as any)?.credits ?? 0
+    if (currentCredits <= 0) {
+      setShowCreditModal(true)
+      return
+    }
+
     if (!account?.template_id) {
       toast.error('Please select a template first')
       setShowTemplateModal(true)
@@ -317,6 +339,16 @@ export default function AccountPage() {
 
     const tempId = `pending-${Date.now()}`
     setPendingPostId(tempId)
+
+    // Optimistically update credits immediately (before API call)
+    const newCredits = currentCredits - 1
+    window.dispatchEvent(new CustomEvent('credits-updated', { 
+      detail: { credits: newCredits, organizationId: account.organization_id } 
+    }))
+    setAccount((prev: any) => ({
+      ...prev,
+      organizations: { ...prev.organizations, credits: newCredits }
+    }))
 
     // Add loading skeleton to posts
     setPosts(prev => [{
@@ -343,6 +375,21 @@ export default function AccountPage() {
       const data = await response.json()
 
       if (!response.ok) {
+        if (response.status === 402) {
+          // Revert credit deduction on insufficient credits error
+          window.dispatchEvent(new CustomEvent('credits-updated', { 
+            detail: { credits: currentCredits, organizationId: account.organization_id } 
+          }))
+          setAccount((prev: any) => ({
+            ...prev,
+            organizations: { ...prev.organizations, credits: currentCredits }
+          }))
+          setShowCreditModal(true)
+          // Remove loading skeleton
+          setPosts(prev => prev.filter(p => p.id !== tempId))
+          setPendingPostId(null)
+          return
+        }
         throw new Error(data.error || 'Failed to generate post')
       }
 
@@ -369,7 +416,8 @@ export default function AccountPage() {
         .order('position', { ascending: true })
         .limit(1)
 
-      const thumbnail = postImagesData?.[0]?.images?.url || null
+      const imagesData = postImagesData?.[0]?.images as any
+      const thumbnail = (Array.isArray(imagesData) ? imagesData?.[0]?.url : imagesData?.url) || null
       const metrics = (newPostData.metrics as any) || {}
       const views = metrics.views || 0
 
@@ -387,9 +435,28 @@ export default function AccountPage() {
       }
       setPosts(prev => prev.map(p => p.id === tempId ? newPost : p))
 
+      // Sync credits from server response (in case of any discrepancy)
+      if (typeof data.newCredits === 'number') {
+        window.dispatchEvent(new CustomEvent('credits-updated', { 
+          detail: { credits: data.newCredits, organizationId: account.organization_id } 
+        }))
+        setAccount((prev: any) => ({
+          ...prev,
+          organizations: { ...prev.organizations, credits: data.newCredits }
+        }))
+      }
+
       toast.success('Post generated successfully!')
     } catch (error: any) {
       console.error('Error generating post:', error)
+      // Revert credit deduction on error
+      window.dispatchEvent(new CustomEvent('credits-updated', { 
+        detail: { credits: currentCredits, organizationId: account.organization_id } 
+      }))
+      setAccount((prev: any) => ({
+        ...prev,
+        organizations: { ...prev.organizations, credits: currentCredits }
+      }))
       // Remove loading skeleton
       setPosts(prev => prev.filter(p => p.id !== tempId))
       toast.error(error.message || 'Failed to generate post')
@@ -400,8 +467,36 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
+      <div className="min-h-screen bg-background pb-10">
+        <div className="max-w-[600px] mx-auto px-4 pt-6">
+          <div className="flex gap-6 items-center mb-8">
+            <Skeleton className="size-20 md:size-24 rounded-full bg-zinc-800" />
+            <div className="flex-1 space-y-3">
+              <Skeleton className="h-8 w-48 bg-zinc-800" />
+              <Skeleton className="h-4 w-32 bg-zinc-800" />
+              <div className="flex gap-2">
+                <Skeleton className="h-9 w-32 bg-zinc-800" />
+                <Skeleton className="h-9 w-9 bg-zinc-800" />
+                <Skeleton className="h-9 w-24 bg-zinc-800" />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-6 mb-6">
+            <Skeleton className="h-4 w-20 bg-zinc-800" />
+            <Skeleton className="h-4 w-20 bg-zinc-800" />
+            <Skeleton className="h-4 w-20 bg-zinc-800" />
+          </div>
+          <Skeleton className="h-24 w-full rounded-xl bg-zinc-800 mb-6" />
+          <div className="flex gap-8 border-b border-border/60 mb-4">
+            <Skeleton className="h-8 w-20 bg-zinc-800" />
+            <Skeleton className="h-8 w-20 bg-zinc-800" />
+          </div>
+          <div className="grid grid-cols-3 gap-0.5">
+            {[...Array(9)].map((_, i) => (
+              <Skeleton key={i} className="aspect-[3/4] w-full bg-zinc-800" />
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
@@ -672,8 +767,11 @@ export default function AccountPage() {
                 postId={post.id}
                 postContent={post.content}
                 status={post.status}
+                title={post.title}
+                caption={post.caption}
                 onDelete={() => {
-                  setPosts(prev => prev.filter(p => p.id !== post.id))
+                  setPostToDelete(post.id)
+                  setShowDeleteDialog(true)
                 }}
                 onExpand={() => {
                   setSelectedPost(post)
@@ -736,6 +834,12 @@ export default function AccountPage() {
         />
       )}
 
+      {/* Credit Limit Modal */}
+      <CreditLimitModal 
+        open={showCreditModal}
+        onOpenChange={setShowCreditModal}
+      />
+
       {/* Post Preview Modal */}
       {selectedPost && (
         <PostPreviewModal
@@ -755,10 +859,52 @@ export default function AccountPage() {
           }}
           onStatusChange={(newStatus) => {
             setPosts(prev => prev.map(p => p.id === selectedPost.id ? { ...p, status: newStatus } : p))
-            setSelectedPost(prev => prev ? { ...prev, status: newStatus } : prev)
+            setSelectedPost((prev: any) => prev ? { ...prev, status: newStatus } : prev)
           }}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="bg-[#171717] border-zinc-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#dbdbdb]">Delete Carousel</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#dbdbdb]/80">
+              Are you sure you want to delete this carousel? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!postToDelete) return
+                
+                try {
+                  const { error } = await supabase
+                    .from('posts')
+                    .delete()
+                    .eq('id', postToDelete)
+
+                  if (error) throw error
+
+                  setPosts(prev => prev.filter(p => p.id !== postToDelete))
+                  toast.success('Carousel deleted')
+                  setShowDeleteDialog(false)
+                  setPostToDelete(null)
+                } catch (error: any) {
+                  console.error('Error deleting carousel:', error)
+                  toast.error(error.message || 'Failed to delete carousel')
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

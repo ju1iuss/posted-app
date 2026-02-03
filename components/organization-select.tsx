@@ -14,43 +14,19 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
-export function OrganizationSelect() {
-  const [organizations, setOrganizations] = useState<any[]>([])
-  const [currentOrg, setCurrentOrg] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const supabase = useMemo(() => createClient(), [])
+interface OrganizationSelectProps {
+  organizations: any[]
+  currentOrg: any
+  onOrgChange: (org: any) => void
+}
 
-  useEffect(() => {
-    async function loadOrgs() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setLoading(false)
-        return
-      }
-
-      const { data: orgMembers } = await supabase
-        .from('organization_members')
-        .select('organizations(*)')
-        .eq('profile_id', user.id)
-
-      const orgs = orgMembers?.map(m => (m as any).organizations).filter(Boolean) || []
-      setOrganizations(orgs)
-      
-      if (orgs.length > 0) {
-        setCurrentOrg(orgs[0])
-      }
-      setLoading(false)
-    }
-
-    loadOrgs()
-  }, [supabase])
-
-  if (loading) return <div className="h-8 w-32 animate-pulse bg-zinc-800 rounded-lg" />
+export function OrganizationSelect({ organizations, currentOrg, onOrgChange }: OrganizationSelectProps) {
+  if (!currentOrg) return <div className="h-8 w-32 animate-pulse bg-zinc-800 rounded-lg" />
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="flex items-center gap-2.5 px-4 py-1.5 rounded-lg hover:bg-zinc-800 border border-transparent hover:border-zinc-700 transition-all duration-200 group min-w-[200px]">
+        <button className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800 border border-transparent hover:border-zinc-700 transition-all duration-200 group w-full">
           <div className="flex aspect-square size-7 items-center justify-center rounded-md bg-[#ddfc7b] text-[#171717] shadow-sm transition-transform group-hover:scale-105">
             <Building2 className="size-3.5" />
           </div>
@@ -70,7 +46,7 @@ export function OrganizationSelect() {
         {organizations.map((org) => (
           <DropdownMenuItem 
             key={org.id}
-            onClick={() => setCurrentOrg(org)}
+            onClick={() => onOrgChange(org)}
             className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-all focus:bg-zinc-700"
           >
             <div className="flex size-6 items-center justify-center rounded-md bg-zinc-700 border border-zinc-600">

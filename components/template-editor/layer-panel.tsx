@@ -149,19 +149,21 @@ export function LayerPanel({
     const { active, over } = event
 
     if (over && active.id !== over.id) {
-      const sortedLayers = [...layers].sort((a, b) => a.position - b.position)
-      const oldIndex = sortedLayers.findIndex(l => l.id === active.id)
-      const newIndex = sortedLayers.findIndex(l => l.id === over.id)
+      const sortedLayers = [...layers].sort((a, b) => b.position - a.position)
+    const oldIndex = sortedLayers.findIndex(l => l.id === active.id)
+    const newIndex = sortedLayers.findIndex(l => l.id === over.id)
+    if (oldIndex !== -1 && newIndex !== -1) {
       const reordered = arrayMove(sortedLayers, oldIndex, newIndex)
       const layerIds = reordered.map(l => l.id).filter(Boolean) as string[]
       onReorderLayers(layerIds)
     }
   }
+  }
 
   return (
-    <div className="w-full h-full border-l border-zinc-700 bg-zinc-800 flex flex-col">
+    <div className="w-full h-full bg-transparent flex flex-col">
       {!readOnly && (
-        <div className="p-3 border-b border-zinc-700 space-y-2">
+        <div className="p-4 border-b border-zinc-800 space-y-3 bg-zinc-900/30">
           <div className="text-[10px] font-bold text-[#dbdbdb]/60 uppercase tracking-widest mb-1.5 px-0.5">
             Components
           </div>
@@ -189,12 +191,17 @@ export function LayerPanel({
       )}
 
       <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
-        <div className="text-[10px] font-bold text-[#dbdbdb]/60 uppercase tracking-widest mb-2 px-1">
+        <div className="text-[10px] font-bold text-[#dbdbdb]/60 uppercase tracking-widest mb-3 px-1">
           Layers
         </div>
-        {layers.length === 0 ? (
-          <div className="text-center py-6 text-[#dbdbdb]/60 text-[10px] italic">
-            Empty canvas
+        {!layers || layers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center border-2 border-dashed border-zinc-800 rounded-xl mx-1">
+            <div className="text-[#dbdbdb]/20 mb-2 font-bold text-[10px] uppercase tracking-tighter italic">
+              Empty Canvas
+            </div>
+            <div className="text-[#dbdbdb]/40 text-[9px] leading-relaxed">
+              Add text or images from the components above to start building your slide.
+            </div>
           </div>
         ) : (
           <DndContext
@@ -203,12 +210,12 @@ export function LayerPanel({
             onDragEnd={handleDragEnd}
           >
             <SortableContext
-              items={[...layers].sort((a, b) => a.position - b.position).map(l => l.id || '')}
+              items={[...layers].sort((a, b) => b.position - a.position).map(l => l.id || '')}
               strategy={verticalListSortingStrategy}
             >
               <div className="space-y-1">
                 {[...layers]
-                  .sort((a, b) => a.position - b.position)
+                  .sort((a, b) => b.position - a.position)
                   .map((layer, index) => (
                     <SortableLayerItem
                       key={layer.id || `layer-${index}`}

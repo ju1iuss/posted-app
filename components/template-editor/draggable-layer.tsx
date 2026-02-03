@@ -37,7 +37,7 @@ export function DraggableLayer({
   const [isEditing, setIsEditing] = useState(false)
   const [editText, setEditText] = useState(layer.text_content || '')
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
-  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, initialDistance: 0 })
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0, initialDistance: 0 })
   const layerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -56,7 +56,7 @@ export function DraggableLayer({
     width: `${layer.width}%`,
     height: layer.type === 'image' && layer.height ? `${layer.height}%` : 'auto',
     transform: 'translate(-50%, -50%)',
-    zIndex: layer.position + 10,
+    zIndex: 10 + (layer.position || 0),
   }
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -74,7 +74,7 @@ export function DraggableLayer({
       setIsResizing(true)
       setResizeHandle(handleType)
       const layerRect = layerRef.current?.getBoundingClientRect()
-      const canvasElement = layerRef.current?.closest('[data-canvas]') as HTMLElement
+      const canvasElement = layerRef.current?.closest('[data-canvas]') as HTMLDivElement | null
       if (layerRect && canvasElement) {
         canvasRef.current = canvasElement
         setResizeStart({
@@ -97,7 +97,7 @@ export function DraggableLayer({
     setIsDragging(true)
     
     const layerRect = layerRef.current?.getBoundingClientRect()
-    const canvasElement = layerRef.current?.closest('[data-canvas]') as HTMLElement
+    const canvasElement = layerRef.current?.closest('[data-canvas]') as HTMLDivElement | null
     if (layerRect && canvasElement) {
       canvasRef.current = canvasElement
       const layerCenterX = layerRect.left + layerRect.width / 2
@@ -311,6 +311,7 @@ export function DraggableLayer({
             className="object-cover pointer-events-none rounded-[inherit]"
             style={{ borderRadius: `${12 * scaleFactor}px` }}
             draggable={false}
+            unoptimized
           />
         ) : (
           <div 

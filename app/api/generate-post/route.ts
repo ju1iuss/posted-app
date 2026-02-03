@@ -38,10 +38,10 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient()
 
-    // Fetch account with prompt
+    // Fetch account with prompt and check credits
     const { data: account, error: accountError } = await supabase
       .from('accounts')
-      .select('prompt, organization_id')
+      .select('prompt, organization_id, organizations(credits)')
       .eq('id', accountId)
       .single()
 
@@ -49,6 +49,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'Account not found' },
         { status: 404 }
+      )
+    }
+
+    const org = account.organizations as any
+    if (!org || org.credits <= 0) {
+      return NextResponse.json(
+        { error: 'Insufficient credits' },
+        { status: 402 }
+      )
+    }
+
+    // Deduct one credit
+    const { error: updateError } = await supabase
+      .from('organizations')
+      .update({ credits: org.credits - 1 })
+      .eq('id', account.organization_id)
+
+    if (updateError) {
+      return NextResponse.json(
+        { error: 'Failed to deduct credits' },
+        { status: 500 }
       )
     }
 
@@ -91,7 +112,8 @@ export async function POST(request: NextRequest) {
         text_content,
         image_id,
         image_collection_id,
-        image_source_type
+        image_source_type,
+        is_fixed
       `)
       .in('slide_id', slideIds)
       .order('position', { ascending: true })
@@ -263,7 +285,7 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
 
     const slidesWithText: typeof slides = []
     slides.forEach((slide, idx) => {
-      const slideLayers = textLayersBySlide[slide.id] || []
+      const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
       if (slideLayers.length > 0) {
         slidesWithText.push(slide)
         promptText += `Slide ${idx + 1} (position ${slide.position}):\n`
@@ -281,7 +303,7 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
     promptText += `  "caption": "Engaging caption text here #hashtag1 #hashtag2 #hashtag3",\n`
     promptText += `  "slides": [\n`
     slidesWithText.forEach((slide, idx) => {
-      const slideLayers = textLayersBySlide[slide.id] || []
+      const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
       promptText += `    {\n`
       promptText += `      "slide_id": "${slide.id}",\n`
       promptText += `      "position": ${slide.position},\n`
@@ -393,12 +415,18 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
           layer_id: layer.id
         }
 
-        // Add text content if it's a text layer and was generated
+        // Add text content if it's a text layer
         if (layer.type === 'text') {
-          if (generatedLayer?.text_content) {
+          if (layer.is_fixed) {
+            layerData.text_content = layer.text_content
+            console.log('[generate-post] Text layer', layer.id, 'is FIXED, using original content')
+          } else if (generatedLayer?.text_content) {
             layerData.text_content = generatedLayer.text_content
+            console.log('[generate-post] Text layer', layer.id, 'content:', layerData.text_content?.substring(0, 30))
+          } else {
+            layerData.text_content = layer.text_content
+            console.log('[generate-post] Text layer', layer.id, 'NO AI CONTENT, using original content')
           }
-          console.log('[generate-post] Text layer', layer.id, 'content:', layerData.text_content?.substring(0, 30))
         }
 
         // Add image URL if it's an image layer
@@ -465,6 +493,7 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
     return NextResponse.json({
       success: true,
       post: newPost,
+      newCredits: org.credits - 1,
     })
   } catch (error: any) {
     console.error('Error generating post:', error)

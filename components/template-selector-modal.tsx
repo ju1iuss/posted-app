@@ -178,29 +178,21 @@ export function TemplateSelectorModal({
             </div>
           ) : (
             <div className="grid grid-cols-3 gap-3 pb-4">
-              {/* None option */}
+              {/* New Template option */}
               <button
-                onClick={() => handleSelect(null)}
-                className={`
-                  relative group aspect-[9/16] border-2 rounded-lg overflow-hidden transition-all cursor-pointer
-                  ${selectedTemplateId === null 
-                    ? 'border-[#ddfc7b] shadow-lg shadow-[#ddfc7b]/20' 
-                    : 'border-zinc-700 hover:border-zinc-600'
-                  }
-                `}
+                onClick={() => {
+                  router.push("/templates?new=true")
+                  onOpenChange(false)
+                }}
+                className="relative group aspect-[9/16] border-2 border-dashed border-zinc-600 hover:border-[#ddfc7b] rounded-lg overflow-hidden transition-all cursor-pointer bg-zinc-900/50 hover:bg-zinc-900"
               >
-                <div className="absolute inset-0 bg-zinc-900 flex items-center justify-center">
-                  <Layout className="size-6 text-zinc-700" />
-                </div>
-                {selectedTemplateId === null && (
-                  <div className="absolute top-1 right-1 size-4 rounded-full bg-[#ddfc7b] flex items-center justify-center shadow-lg">
-                    <Check className="size-2.5 text-[#171717]" />
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <div className="size-10 rounded-full bg-zinc-800 group-hover:bg-[#ddfc7b] transition-colors flex items-center justify-center">
+                    <Layout className="size-5 text-zinc-500 group-hover:text-[#171717] transition-colors" />
                   </div>
-                )}
-                <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/90 to-transparent">
-                  <div className="text-[9px] font-bold text-white line-clamp-1 drop-shadow-sm">
-                    No Template
-                  </div>
+                  <span className="text-[10px] font-bold text-zinc-500 group-hover:text-[#ddfc7b] uppercase tracking-wider transition-colors">
+                    New Template
+                  </span>
                 </div>
               </button>
 

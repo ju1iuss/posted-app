@@ -6,6 +6,7 @@ import { User, Mail, Shield, UserCircle, Loader2, Camera } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
@@ -63,8 +64,34 @@ export default function AccountPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="size-6 animate-spin text-zinc-400" />
+      <div className="space-y-8 max-w-4xl mx-auto">
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-48 bg-zinc-800" />
+          <Skeleton className="h-4 w-96 bg-zinc-800" />
+        </div>
+        <div className="grid gap-6">
+          <Card className="bg-[#2a2a2a] border-zinc-800 shadow-xl overflow-hidden">
+            <CardHeader className="border-b border-zinc-800 bg-zinc-800/20">
+              <Skeleton className="h-6 w-48 bg-zinc-800" />
+              <Skeleton className="h-4 w-64 bg-zinc-800 mt-2" />
+            </CardHeader>
+            <CardContent className="pt-8 space-y-6">
+              <div className="flex flex-col sm:flex-row items-center gap-8">
+                <Skeleton className="size-24 rounded-full bg-zinc-800" />
+                <div className="flex-1 w-full space-y-4">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-20 bg-zinc-800" />
+                    <Skeleton className="h-10 w-full bg-zinc-900" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24 bg-zinc-800" />
+                    <Skeleton className="h-10 w-full bg-zinc-900" />
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     )
   }

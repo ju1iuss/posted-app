@@ -36,9 +36,20 @@ import {
   DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export default function CollectionsPage() {
   const [collections, setCollections] = useState<any[]>([])
@@ -62,6 +73,11 @@ export default function CollectionsPage() {
   const [loadingImages, setLoadingImages] = useState(false)
   const [isEditingName, setIsEditingName] = useState(false)
   const [editedName, setEditedName] = useState("")
+  const [isDragging, setIsDragging] = useState(false)
+
+  // Delete Dialog State
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [collectionToDelete, setCollectionToDelete] = useState<string | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -129,7 +145,36 @@ export default function CollectionsPage() {
     loadCollections()
   }, [loadCollections])
 
-  const loadCollectionImages = async (collectionId: string) => {
+  // Real-time subscription for collections and their images
+  useEffect(() => {
+    const channel = supabase
+      .channel('collections-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collections'
+        },
+        () => loadCollections()
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'collection_images'
+        },
+        () => loadCollections()
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [supabase, loadCollections])
+
+  const loadCollectionImages = useCallback(async (collectionId: string) => {
     try {
       setLoadingImages(true)
       const { data, error } = await supabase
@@ -151,7 +196,32 @@ export default function CollectionsPage() {
     } finally {
       setLoadingImages(false)
     }
-  }
+  }, [supabase])
+
+  useEffect(() => {
+    if (isDetailsModalOpen && selectedCollection) {
+      const channel = supabase
+        .channel(`collection_images_${selectedCollection.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'collection_images',
+            filter: `collection_id=eq.${selectedCollection.id}`
+          },
+          () => {
+            loadCollectionImages(selectedCollection.id)
+            loadCollections() // Update the main grid count too
+          }
+        )
+        .subscribe()
+
+      return () => {
+        supabase.removeChannel(channel)
+      }
+    }
+  }, [isDetailsModalOpen, selectedCollection, supabase, loadCollections, loadCollectionImages])
 
   const handleCollectionClick = (collection: any) => {
     setSelectedCollection(collection)
@@ -220,76 +290,10 @@ export default function CollectionsPage() {
     }
   }
 
-  const uploadImagesToCollection = async (files: File[]) => {
+  const uploadImagesToCollection = (files: File[]) => {
     if (!selectedCollection || !currentOrgId) return
-
-    try {
-      setUploading(true)
-      setUploadProgress({ current: 0, total: files.length })
-      const newImages = []
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i]
-        setUploadProgress({ current: i + 1, total: files.length })
-        
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
-        const filePath = `${currentOrgId}/uploads/${fileName}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('images')
-          .upload(filePath, file)
-
-        if (uploadError) throw uploadError
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('images')
-          .getPublicUrl(filePath)
-
-        const { data: image, error: imageError } = await supabase
-          .from('images')
-          .insert({
-            organization_id: currentOrgId,
-            storage_path: filePath,
-            url: publicUrl,
-            filename: file.name,
-            source: 'upload',
-            size_bytes: file.size,
-            mime_type: file.type
-          })
-          .select()
-          .single()
-
-        if (imageError) throw imageError
-        newImages.push(image)
-      }
-
-      const nextPosition = collectionImages.length > 0 
-        ? Math.max(...collectionImages.map(ci => ci.position || 0)) + 1 
-        : 0
-
-      const linkRecords = newImages.map((img, index) => ({
-        collection_id: selectedCollection.id,
-        image_id: img.id,
-        position: nextPosition + index
-      }))
-
-      const { error: linkError } = await supabase
-        .from('collection_images')
-        .insert(linkRecords)
-
-      if (linkError) throw linkError
-
-      toast.success(`Added ${files.length} images`)
-      loadCollectionImages(selectedCollection.id)
-      loadCollections() // Refresh the grid
-    } catch (error: any) {
-      console.error(error)
-      toast.error("Failed to upload images")
-    } finally {
-      setUploading(false)
-      setUploadProgress(null)
-    }
+    setIsDetailsModalOpen(false)
+    uploadImagesToCollectionAsync(selectedCollection.id, files, currentOrgId)
   }
 
   const removeImageFromCollection = async (collectionImageId: string) => {
@@ -316,6 +320,33 @@ export default function CollectionsPage() {
     setPreviews(prev => prev.filter((_, i) => i !== index))
   }
 
+  const handleDeleteCollectionClick = (e: React.MouseEvent, collectionId: string) => {
+    e.stopPropagation() // Prevent opening the modal
+    setCollectionToDelete(collectionId)
+    setDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteCollection = async () => {
+    if (!collectionToDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('collections')
+        .delete()
+        .eq('id', collectionToDelete)
+
+      if (error) throw error
+
+      setCollections(prev => prev.filter(c => c.id !== collectionToDelete))
+      toast.success("Collection deleted")
+      setDeleteDialogOpen(false)
+      setCollectionToDelete(null)
+    } catch (error: any) {
+      console.error(error)
+      toast.error("Failed to delete collection")
+    }
+  }
+
   const handleCreateCollection = async () => {
     if (!newCollectionName.trim()) {
       toast.error("Please enter a collection name")
@@ -332,17 +363,36 @@ export default function CollectionsPage() {
       return
     }
 
+    // Capture values before closing modal
+    const name = newCollectionName.trim()
+    const files = [...selectedFiles]
+    const orgId = currentOrgId
+
     try {
       setUploading(true)
-      setUploadProgress({ current: 0, total: selectedFiles.length })
       
-      const slug = newCollectionName.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+      
+      // Check if collection with same name exists in this org
+      const { data: existing } = await supabase
+        .from('collections')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('slug', slug)
+        .single()
+
+      if (existing) {
+        toast.error("A collection with this name already exists.")
+        setUploading(false)
+        return
+      }
+
       const { data: collection, error: collectionError } = await supabase
         .from('collections')
         .insert({
-          name: newCollectionName,
+          name: name,
           slug,
-          organization_id: currentOrgId,
+          organization_id: orgId,
           is_public: false
         })
         .select()
@@ -350,14 +400,20 @@ export default function CollectionsPage() {
 
       if (collectionError) throw collectionError
 
-      const imageRecords = []
-      for (let i = 0; i < selectedFiles.length; i++) {
-        const file = selectedFiles[i]
-        setUploadProgress({ current: i + 1, total: selectedFiles.length })
+      // Split files: first 4 for synchronous upload, rest for background
+      const firstFour = files.slice(0, 4)
+      const remaining = files.slice(4)
+      
+      setUploadProgress({ current: 0, total: files.length })
+
+      // Upload first 4 synchronously to ensure they show up in the grid immediately
+      for (let i = 0; i < firstFour.length; i++) {
+        const file = firstFour[i]
+        setUploadProgress({ current: i + 1, total: files.length })
         
         const fileExt = file.name.split('.').pop()
         const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
-        const filePath = `${currentOrgId}/uploads/${fileName}`
+        const filePath = `${orgId}/uploads/${fileName}`
 
         const { error: uploadError } = await supabase.storage
           .from('images')
@@ -372,7 +428,7 @@ export default function CollectionsPage() {
         const { data: image, error: imageError } = await supabase
           .from('images')
           .insert({
-            organization_id: currentOrgId,
+            organization_id: orgId,
             storage_path: filePath,
             url: publicUrl,
             filename: file.name,
@@ -384,37 +440,136 @@ export default function CollectionsPage() {
           .single()
 
         if (imageError) throw imageError
-        imageRecords.push(image)
+
+        // Link image to collection
+        const { error: linkError } = await supabase
+          .from('collection_images')
+          .insert({
+            collection_id: collection.id,
+            image_id: image.id,
+            position: i
+          })
+
+        if (linkError) throw linkError
+
+        // Set cover image
+        if (i === 0) {
+          await supabase
+            .from('collections')
+            .update({ cover_image_url: publicUrl })
+            .eq('id', collection.id)
+        }
       }
 
-      const collectionImages = imageRecords.map((img, index) => ({
-        collection_id: collection.id,
-        image_id: img.id,
-        position: index
-      }))
-
-      const { error: linkError } = await supabase
-        .from('collection_images')
-        .insert(collectionImages)
-
-      if (linkError) throw linkError
-
-      if (imageRecords.length > 0) {
-        await supabase
-          .from('collections')
-          .update({ cover_image_url: imageRecords[0].url })
-          .eq('id', collection.id)
-      }
-
-      toast.success("Collection created successfully")
+      // Close modal and reset state
       setIsCreateModalOpen(false)
       setNewCollectionName("")
       setSelectedFiles([])
       setPreviews([])
+      setUploading(false)
+      setUploadProgress(null)
+      
+      // Refresh the grid to show the new collection with its first 4 images
       loadCollections()
+      
+      if (remaining.length > 0) {
+        // Start background upload for the rest, starting position after the first 4
+        uploadImagesToCollectionAsync(collection.id, remaining, orgId, firstFour.length)
+        toast.success(`Collection created! First ${firstFour.length} images uploaded, the remaining ${remaining.length} are uploading in the background.`)
+      } else {
+        toast.success("Collection created successfully!")
+      }
     } catch (error: any) {
       console.error(error)
       toast.error(error.message || "Failed to create collection")
+      setUploading(false)
+    }
+  }
+
+  const uploadImagesToCollectionAsync = async (collectionId: string, files: File[], orgId: string, startPos?: number) => {
+    const toastId = toast.loading(`Uploading 0/${files.length} images...`)
+    setUploading(true)
+    setUploadProgress({ current: 0, total: files.length })
+    
+    try {
+      let nextPosition = 0;
+      
+      if (typeof startPos === 'number') {
+        nextPosition = startPos;
+      } else {
+        // Get the current max position to append new images
+        const { data: currentImages } = await supabase
+          .from('collection_images')
+          .select('position')
+          .eq('collection_id', collectionId)
+        
+        nextPosition = currentImages && currentImages.length > 0
+          ? Math.max(...currentImages.map(ci => ci.position || 0)) + 1
+          : 0
+      }
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        const current = i + 1
+        toast.loading(`Uploading ${current}/${files.length} images...`, { id: toastId })
+        setUploadProgress({ current, total: files.length })
+        
+        const fileExt = file.name.split('.').pop()
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
+        const filePath = `${orgId}/uploads/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('images')
+          .upload(filePath, file)
+
+        if (uploadError) throw uploadError
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('images')
+          .getPublicUrl(filePath)
+
+        const { data: image, error: imageError } = await supabase
+          .from('images')
+          .insert({
+            organization_id: orgId,
+            storage_path: filePath,
+            url: publicUrl,
+            filename: file.name,
+            source: 'upload',
+            size_bytes: file.size,
+            mime_type: file.type
+          })
+          .select()
+          .single()
+
+        if (imageError) throw imageError
+
+        // Link image to collection
+        const { error: linkError } = await supabase
+          .from('collection_images')
+          .insert({
+            collection_id: collectionId,
+            image_id: image.id,
+            position: nextPosition + i
+          })
+
+        if (linkError) throw linkError
+
+        // If it's the first image in the collection, update collection cover
+        // Or if the collection currently has no cover
+        if (nextPosition + i === 0) {
+          await supabase
+            .from('collections')
+            .update({ cover_image_url: publicUrl })
+            .eq('id', collectionId)
+        }
+      }
+
+      toast.success(`Successfully uploaded ${files.length} images`, { id: toastId })
+      loadCollections() // Final refresh to update counts/cover
+    } catch (error: any) {
+      console.error(error)
+      toast.error(`Background upload failed: ${error.message}`, { id: toastId })
     } finally {
       setUploading(false)
       setUploadProgress(null)
@@ -432,8 +587,33 @@ export default function CollectionsPage() {
 
   if (loading && !collections.length) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="size-6 animate-spin text-[#dbdbdb]/60" />
+      <div className="min-h-screen pb-10">
+        <div className="max-w-[1000px] mx-auto px-6 pt-10">
+          <div className="flex flex-col gap-8">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-48 bg-zinc-800" />
+                <Skeleton className="h-4 w-64 bg-zinc-800" />
+              </div>
+              <Skeleton className="h-10 w-36 rounded-xl bg-zinc-800" />
+            </div>
+            <div className="flex gap-3">
+              <Skeleton className="h-11 flex-1 rounded-xl bg-zinc-800" />
+              <Skeleton className="h-11 w-[140px] rounded-xl bg-zinc-800" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="flex flex-col gap-3 p-2 rounded-2xl border border-zinc-700 bg-zinc-800">
+                  <Skeleton className="aspect-square w-full rounded-xl bg-zinc-700" />
+                  <div className="px-1 pb-1 space-y-2">
+                    <Skeleton className="h-4 w-3/4 bg-zinc-700" />
+                    <Skeleton className="h-3 w-1/4 bg-zinc-700" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -457,31 +637,31 @@ export default function CollectionsPage() {
                   <span>New Collection</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] rounded-2xl bg-zinc-800 border-zinc-700">
-                <DialogHeader>
-                  <DialogTitle className="text-[#dbdbdb]">Create New Collection</DialogTitle>
-                  <DialogDescription className="text-[#dbdbdb]/60">
-                    Give your collection a name and upload some images.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <label htmlFor="name" className="text-sm font-medium text-[#dbdbdb]">Name</label>
-                    <Input
-                      id="name"
-                      placeholder="e.g. Summer Vibes 2024"
-                      value={newCollectionName}
-                      onChange={(e) => setNewCollectionName(e.target.value)}
-                      className="rounded-xl bg-zinc-900 border-zinc-700 text-[#dbdbdb]"
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium text-[#dbdbdb]">Images</label>
-                    <div 
-                      className={cn(
-                        "border-2 border-dashed border-zinc-700 rounded-2xl p-8 flex flex-col items-center justify-center gap-2 hover:border-zinc-600 transition-all cursor-pointer bg-zinc-800/50",
-                        selectedFiles.length > 0 && "p-4"
-                      )}
+            <DialogContent className="sm:max-w-[500px] rounded-2xl bg-zinc-800 border-zinc-700 max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="text-[#dbdbdb]">Create New Collection</DialogTitle>
+                <DialogDescription className="text-[#dbdbdb]/60">
+                  Give your collection a name and upload some images.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <label htmlFor="name" className="text-sm font-medium text-[#dbdbdb]">Name</label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. Summer Vibes 2024"
+                    value={newCollectionName}
+                    onChange={(e) => setNewCollectionName(e.target.value)}
+                    className="rounded-xl bg-zinc-900 border-zinc-700 text-[#dbdbdb]"
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <label className="text-sm font-medium text-[#dbdbdb]">Images</label>
+                  <div 
+                    className={cn(
+                      "border-2 border-dashed border-zinc-700 rounded-2xl p-8 flex flex-col items-center justify-center gap-2 hover:border-zinc-600 transition-all cursor-pointer bg-zinc-800/50 max-h-[300px] overflow-y-auto",
+                      selectedFiles.length > 0 && "p-4 items-start justify-start"
+                    )}
                       onClick={() => document.getElementById('file-upload')?.click()}
                       onDragOver={(e) => {
                         e.preventDefault()
@@ -614,6 +794,7 @@ export default function CollectionsPage() {
                           alt={`${collection.name} preview ${idx}`}
                           fill
                           className="object-cover"
+                          unoptimized
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
@@ -630,8 +811,19 @@ export default function CollectionsPage() {
                     <h3 className="font-bold text-[#dbdbdb] text-sm line-clamp-1 leading-tight">
                       {collection.name}
                     </h3>
-                    <div className="flex items-center gap-1 text-[10px] font-bold text-[#dbdbdb]/60">
-                      <span>{collection.total_count}</span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1 text-[10px] font-bold text-[#dbdbdb]/60">
+                        <span>{collection.total_count}</span>
+                      </div>
+                      {!collection.is_public && (
+                        <button
+                          onClick={(e) => handleDeleteCollectionClick(e, collection.id)}
+                          className="size-6 rounded-md flex items-center justify-center text-[#dbdbdb]/40 hover:text-red-400 hover:bg-red-400/10 transition-colors"
+                          title="Delete collection"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                   <span className="text-[9px] font-black uppercase tracking-widest text-[#dbdbdb]/60">
@@ -738,7 +930,41 @@ export default function CollectionsPage() {
             </div>
 
             {/* Modal Content - Image Grid */}
-            <div className="flex-1 overflow-y-auto p-6 bg-zinc-900/30">
+            <div 
+              className={cn(
+                "flex-1 overflow-y-auto p-6 bg-zinc-900/30 relative transition-colors",
+                isDragging && "bg-[#ddfc7b]/5 ring-2 ring-inset ring-[#ddfc7b]/20"
+              )}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIsDragging(true)
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIsDragging(false)
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setIsDragging(false)
+                if (e.dataTransfer.files) {
+                  const files = Array.from(e.dataTransfer.files)
+                  uploadImagesToCollection(files)
+                }
+              }}
+            >
+              {isDragging && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-900/40 backdrop-blur-[2px] pointer-events-none">
+                  <div className="flex flex-col items-center gap-2 text-[#ddfc7b]">
+                    <div className="size-12 rounded-full bg-[#ddfc7b]/10 flex items-center justify-center border border-[#ddfc7b]/20">
+                      <Upload className="size-6" />
+                    </div>
+                    <p className="text-sm font-bold">Drop images to upload</p>
+                  </div>
+                </div>
+              )}
               {loadingImages ? (
                 <div className="w-full h-full flex items-center justify-center">
                   <Loader2 className="size-6 animate-spin text-[#dbdbdb]/60" />
@@ -755,6 +981,7 @@ export default function CollectionsPage() {
                         alt={ci.image.filename || "Collection image"}
                         fill
                         className="object-cover"
+                        unoptimized
                       />
                       {/* Delete Overlay */}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -781,6 +1008,29 @@ export default function CollectionsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent className="rounded-2xl bg-zinc-800 border-zinc-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#dbdbdb]">Delete Collection</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#dbdbdb]/60">
+              Are you sure you want to delete this collection? This action cannot be undone and will remove all images in this collection.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl border-zinc-700 text-[#dbdbdb] hover:bg-zinc-800">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteCollection}
+              className="bg-red-500 text-white hover:bg-red-600 rounded-xl"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

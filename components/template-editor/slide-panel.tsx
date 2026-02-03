@@ -64,6 +64,7 @@ function SortableSlideItem({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
+    zIndex: isDragging ? 50 : 1,
     opacity: isDragging ? 0.5 : 1
   }
 
@@ -71,9 +72,9 @@ function SortableSlideItem({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative flex items-center gap-1.5 p-1.5 rounded-lg border-2 transition-all cursor-pointer ${
+      className={`group relative flex items-center gap-3 p-2 rounded-xl border-2 transition-all cursor-pointer ${
         selected
-          ? 'border-[#ddfc7b] bg-zinc-800'
+          ? 'border-[#ddfc7b] bg-zinc-800 shadow-lg scale-[1.02]'
           : 'border-transparent hover:border-zinc-700 hover:bg-zinc-800/50'
       }`}
       onClick={onSelect}
@@ -81,20 +82,21 @@ function SortableSlideItem({
       <div
         {...(readOnly ? {} : { ...attributes, ...listeners })}
         className={cn(
-          "text-[#dbdbdb]/60 hover:text-[#dbdbdb] transition-colors",
+          "text-[#dbdbdb]/40 hover:text-[#dbdbdb] transition-colors",
           readOnly ? "cursor-default" : "cursor-grab active:cursor-grabbing"
         )}
       >
-        <GripVertical className="size-3" />
+        <GripVertical className="size-4" />
       </div>
       
-      <div className="relative size-10 rounded bg-zinc-900 overflow-hidden border border-zinc-700 shrink-0">
+      <div className="relative size-14 rounded-md bg-zinc-900 overflow-hidden border border-zinc-700 shrink-0 shadow-inner">
         {slide.background_image_url ? (
           <Image
             src={slide.background_image_url}
             alt={`Slide ${slide.position + 1}`}
             fill
             className="object-cover"
+            unoptimized
           />
         ) : slide.background_type === 'color' && slide.background_color ? (
           <div className="w-full h-full" style={{ backgroundColor: slide.background_color }} />
@@ -105,9 +107,9 @@ function SortableSlideItem({
         )}
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="text-[10px] font-bold text-[#dbdbdb] leading-tight">Slide {slide.position + 1}</div>
-        <div className="text-[8px] text-[#dbdbdb]/60 truncate uppercase font-bold tracking-wider">
+      <div className="flex-1 min-w-0 pr-2">
+        <div className="text-[11px] font-bold text-[#dbdbdb] leading-none truncate">Slide {slide.position + 1}</div>
+        <div className="text-[9px] text-[#dbdbdb]/30 truncate uppercase font-bold tracking-widest mt-1.5">
           {slide.background_type || 'None'}
         </div>
       </div>
@@ -173,13 +175,13 @@ export function SlidePanel({
   }
 
   return (
-    <div className="w-full h-full border-r border-zinc-700 bg-zinc-800 flex flex-col">
+    <div className="w-full h-full bg-transparent flex flex-col">
       {!readOnly && (
-        <div className="p-3 border-b border-zinc-700">
+        <div className="p-4 border-b border-zinc-800 bg-zinc-900/30">
           <Button
             onClick={onAddSlide}
             variant="outline"
-            className="w-full h-8 text-xs font-bold border-zinc-700 bg-zinc-900 text-[#dbdbdb] hover:bg-zinc-700 rounded-lg"
+            className="w-full h-8 text-xs font-bold border-zinc-700 bg-zinc-900 text-[#dbdbdb] hover:bg-zinc-700 rounded-lg transition-all"
             size="sm"
           >
             <Plus className="size-3.5 mr-1.5" />
@@ -188,7 +190,7 @@ export function SlidePanel({
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto p-3 scrollbar-hide">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -198,7 +200,7 @@ export function SlidePanel({
             items={slides.map(s => s.id || '')}
             strategy={verticalListSortingStrategy}
           >
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {slides.map((slide) => (
                 <SortableSlideItem
                   key={slide.id}

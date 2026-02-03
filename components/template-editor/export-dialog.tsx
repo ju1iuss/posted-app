@@ -98,8 +98,7 @@ export function ExportDialog({
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700"
-            className="flex-1"
+            className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700 flex-1"
             disabled={exporting}
           >
             Cancel

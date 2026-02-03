@@ -44,6 +44,7 @@ interface TemplateEditorModalProps {
   templateId?: string | null
   organizationId: string
   onSaved?: () => void
+  autoEdit?: boolean // If true, automatically enter edit mode when opening
 }
 
 export function TemplateEditorModal({
@@ -51,7 +52,8 @@ export function TemplateEditorModal({
   onOpenChange,
   templateId,
   organizationId,
-  onSaved
+  onSaved,
+  autoEdit = false
 }: TemplateEditorModalProps) {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -100,10 +102,10 @@ export function TemplateEditorModal({
 
         // Reset state first, then load template data
         dispatch({ type: 'RESET', template: templateData })
-        // Always start in view mode for existing templates
-        setIsReadOnly(true)
         // Can only edit if owned by this org and not a premade template
         setCanEdit(!templateData.is_premade && templateData.organization_id === organizationId)
+        // Auto-enter edit mode if autoEdit prop is true and template can be edited
+        setIsReadOnly(!(autoEdit && (!templateData.is_premade && templateData.organization_id === organizationId)))
 
         // Load slides
         const { data: slidesData, error: slidesError } = await supabase
@@ -302,7 +304,8 @@ export function TemplateEditorModal({
               stroke_width: layer.stroke_width,
               image_id: layer.image_id,
               image_collection_id: layer.image_collection_id,
-              image_source_type: layer.image_source_type
+              image_source_type: layer.image_source_type,
+              is_fixed: layer.is_fixed
             })
           }
         }
@@ -340,153 +343,161 @@ export function TemplateEditorModal({
           showCloseButton={false}
         >
           {/* Header */}
-          <div className="px-3 py-2 border-b border-zinc-700 bg-zinc-900 shrink-0 flex items-center justify-between z-30">
-            <div className="flex items-center gap-3">
+          <div className="px-4 py-2 border-b border-zinc-800 bg-zinc-900/95 backdrop-blur-md shrink-0 flex items-center justify-between z-50">
+            <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleClose}
-                className="h-7 w-7 hover:bg-zinc-800 text-[#dbdbdb]/60"
+                className="h-8 w-8 hover:bg-zinc-800 text-[#dbdbdb]/60 transition-colors"
               >
-                <X className="size-4" />
+                <X className="size-5" />
               </Button>
-              <div className="h-4 w-px bg-zinc-700" />
+              
+              <div className="h-5 w-px bg-zinc-800" />
               
               <DialogTitle className="sr-only">
                 {templateId ? 'Edit Template' : 'Create Template'}
               </DialogTitle>
 
               {/* Project Name */}
-              <input
-                value={state.template.name}
-                onChange={(e) => dispatch({ type: 'SET_TEMPLATE', template: { ...state.template, name: e.target.value } })}
-                className="bg-transparent border-none text-xs font-bold text-[#dbdbdb] focus:outline-none w-[120px] hover:bg-zinc-800 px-2 py-1 rounded transition-colors"
-                placeholder="New Template"
-                readOnly={isReadOnly}
-              />
-
-              <div className="h-4 w-px bg-zinc-700" />
-
-              {/* Aspect Ratio */}
-              <Select
-                value={state.template.aspect_ratio}
-                onValueChange={(val) => setAspectRatio(val as AspectRatio)}
-                disabled={isReadOnly}
-              >
-                <SelectTrigger className="h-7 w-[130px] text-[10px] font-bold border-transparent bg-zinc-800 hover:bg-zinc-700 text-[#dbdbdb] transition-all px-2 rounded">
-                  <SelectValue placeholder="Select Ratio" />
-                </SelectTrigger>
-                <SelectContent className="rounded-lg bg-zinc-800 border-zinc-700">
-                  {Object.entries(ASPECT_RATIOS).map(([ratio, config]) => (
-                    <SelectItem key={ratio} value={ratio} className="text-[10px] text-[#dbdbdb]">
-                      {ratio} - {config.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <div className="h-4 w-px bg-zinc-700" />
-
-              {/* Slide Count */}
-              <div className="flex items-center justify-center size-6 rounded bg-zinc-800 text-[10px] font-bold text-[#dbdbdb]">
-                {state.slides.length}
+              <div className="flex flex-col">
+                <input
+                  value={state.template.name}
+                  onChange={(e) => dispatch({ type: 'SET_TEMPLATE', template: { ...state.template, name: e.target.value } })}
+                  className="bg-transparent border-none text-[13px] font-bold text-[#dbdbdb] focus:outline-none w-[160px] hover:bg-zinc-800/50 px-2 py-0.5 rounded transition-colors placeholder:text-[#dbdbdb]/20"
+                  placeholder="Untitled Template"
+                  readOnly={isReadOnly}
+                />
+                <div className="px-2 text-[9px] text-[#dbdbdb]/30 font-bold uppercase tracking-tighter -mt-0.5">Project Name</div>
               </div>
 
-              <div className="h-4 w-px bg-zinc-700" />
+              <div className="h-5 w-px bg-zinc-800" />
+
+              {/* Aspect Ratio */}
+              <div className="flex flex-col">
+                <Select
+                  value={state.template.aspect_ratio}
+                  onValueChange={(val) => setAspectRatio(val as AspectRatio)}
+                  disabled={isReadOnly}
+                >
+                  <SelectTrigger className="h-8 w-[140px] text-[11px] font-bold border-transparent bg-zinc-800/50 hover:bg-zinc-800 text-[#dbdbdb] transition-all px-2.5 rounded-lg">
+                    <SelectValue placeholder="Select Ratio" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl bg-zinc-900 border-zinc-800 shadow-2xl">
+                    {Object.entries(ASPECT_RATIOS).map(([ratio, config]) => (
+                      <SelectItem key={ratio} value={ratio} className="text-[11px] text-[#dbdbdb] focus:bg-zinc-800 focus:text-[#ddfc7b]">
+                        {ratio} • {config.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="h-5 w-px bg-zinc-800" />
 
               {/* Zoom Controls */}
-              <div className="flex items-center gap-0.5 bg-zinc-800 rounded-lg p-0.5 border border-zinc-700">
+              <div className="flex items-center gap-1 bg-zinc-800/50 rounded-lg p-0.5 border border-zinc-800/50">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 rounded-md hover:bg-zinc-700 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
-                  onClick={() => dispatch({ type: 'SET_ZOOM', zoom: Math.max(0.5, state.zoom - 0.25) })}
+                  className="h-7 w-7 rounded-md hover:bg-zinc-700 text-[#dbdbdb]/40 hover:text-[#dbdbdb]"
+                  onClick={() => dispatch({ type: 'SET_ZOOM', zoom: Math.max(0.25, state.zoom - 0.25) })}
                 >
-                  <ZoomOut className="size-3" />
+                  <ZoomOut className="size-3.5" />
                 </Button>
+                
                 <Select
                   value={String(state.zoom)}
                   onValueChange={(val) => dispatch({ type: 'SET_ZOOM', zoom: Number(val) })}
                 >
-                  <SelectTrigger className="h-6 w-[60px] text-[10px] font-bold border-0 bg-transparent hover:bg-zinc-700 text-[#dbdbdb] transition-all px-1.5 rounded-md">
-                    <SelectValue placeholder={`${Math.round(state.zoom * 100)}%`} />
+                  <SelectTrigger className="h-7 w-[65px] text-[11px] font-bold border-0 bg-transparent hover:bg-zinc-700 text-[#dbdbdb] transition-all px-1.5 rounded-md">
+                    <span className="flex-1 text-center">{Math.round(state.zoom * 100)}%</span>
                   </SelectTrigger>
-                  <SelectContent className="rounded-lg min-w-[80px] bg-zinc-800 border-zinc-700">
-                    <SelectItem value="0.5" className="text-[10px] text-[#dbdbdb]">50%</SelectItem>
-                    <SelectItem value="0.75" className="text-[10px] text-[#dbdbdb]">75%</SelectItem>
-                    <SelectItem value="1" className="text-[10px] text-[#dbdbdb]">100%</SelectItem>
-                    <SelectItem value="1.25" className="text-[10px] text-[#dbdbdb]">125%</SelectItem>
-                    <SelectItem value="1.5" className="text-[10px] text-[#dbdbdb]">150%</SelectItem>
-                    <SelectItem value="2" className="text-[10px] text-[#dbdbdb]">200%</SelectItem>
+                  <SelectContent className="rounded-xl min-w-[90px] bg-zinc-900 border-zinc-800 shadow-2xl">
+                    {[0.25, 0.5, 0.75, 0.9, 1, 1.25, 1.5, 2].map((z) => (
+                      <SelectItem key={z} value={String(z)} className="text-[11px] text-[#dbdbdb] focus:bg-zinc-800">
+                        {Math.round(z * 100)}%
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
+
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 rounded-md hover:bg-zinc-700 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
-                  onClick={() => dispatch({ type: 'SET_ZOOM', zoom: Math.min(2.0, state.zoom + 0.25) })}
+                  className="h-7 w-7 rounded-md hover:bg-zinc-700 text-[#dbdbdb]/40 hover:text-[#dbdbdb]"
+                  onClick={() => dispatch({ type: 'SET_ZOOM', zoom: Math.min(4.0, state.zoom + 0.25) })}
                 >
-                  <ZoomIn className="size-3" />
+                  <ZoomIn className="size-3.5" />
                 </Button>
               </div>
             </div>
             
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
-                onClick={() => {}}
-              >
-                <Undo2 className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
-                onClick={() => {}}
-              >
-                <Redo2 className="size-3.5" />
-              </Button>
-              <div className="h-4 w-px bg-zinc-700 mx-1" />
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 bg-zinc-800/30 rounded-lg p-1">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-[#dbdbdb]/40 hover:text-[#dbdbdb] hover:bg-zinc-700/50"
+                  onClick={() => {}}
+                >
+                  <Undo2 className="size-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-[#dbdbdb]/40 hover:text-[#dbdbdb] hover:bg-zinc-700/50"
+                  onClick={() => {}}
+                >
+                  <Redo2 className="size-4" />
+                </Button>
+              </div>
+
+              <div className="h-5 w-px bg-zinc-800" />
+              
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowExportDialog(true)}
-                className="h-7 px-3 text-[10px] border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700 font-bold"
+                className="h-8 px-4 text-[11px] border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700 font-bold rounded-lg shadow-sm"
               >
-                <Download className="size-3 mr-1.5" />
+                <Download className="size-3.5 mr-2" />
                 Export
               </Button>
+              
               {isReadOnly && canEdit ? (
                 <Button
                   onClick={() => setIsReadOnly(false)}
-                  className="h-7 px-3 text-[10px] bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 rounded-lg font-bold"
+                  className="h-8 px-5 text-[11px] bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 rounded-lg font-bold shadow-lg"
                 >
-                  <Pencil className="size-3 mr-1.5" />
-                  Edit
+                  <Pencil className="size-3.5 mr-2" />
+                  Edit Template
                 </Button>
               ) : !isReadOnly ? (
                 <Button
                   onClick={handleSave}
                   disabled={saving || !state.template.name}
-                  className="h-7 px-3 text-[10px] bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 rounded-lg font-bold"
+                  className="h-8 px-6 text-[11px] bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 rounded-lg font-bold shadow-lg"
                 >
-                  <Save className="size-3 mr-1.5" />
-                  {saving ? 'Saving...' : 'Save'}
+                  <Save className="size-3.5 mr-2" />
+                  {saving ? 'Saving...' : 'Save Template'}
                 </Button>
               ) : null}
             </div>
           </div>
 
           {/* Main Content */}
-          <div className="flex-1 relative overflow-hidden flex">
+          <div className="flex-1 relative overflow-hidden flex bg-zinc-950">
             {loading ? (
-              <div className="flex-1 flex items-center justify-center bg-zinc-900">
-                <div className="text-[#dbdbdb]/60">Loading template...</div>
+              <div className="flex-1 flex items-center justify-center bg-[#111111]">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="size-8 border-2 border-[#ddfc7b] border-t-transparent rounded-full animate-spin" />
+                  <div className="text-[11px] font-bold text-[#dbdbdb]/40 uppercase tracking-widest">Loading Editor</div>
+                </div>
               </div>
             ) : isReadOnly ? (
-              <div className="flex-1 bg-zinc-900">
+              <div className="flex-1 bg-[#111111]">
                 <TemplatePreview
                   template={state.template}
                   slides={state.slides}
@@ -494,9 +505,9 @@ export function TemplateEditorModal({
                 />
               </div>
             ) : (
-              <DndContext>
+              <>
                 {/* Left: Slide Panel */}
-                <div className="w-[180px] h-full shrink-0 z-20">
+                <div className="w-[200px] h-full shrink-0 z-40 bg-zinc-900/50 border-r border-zinc-800">
                   <SlidePanel
                     slides={state.slides}
                     selectedSlideId={state.selectedSlideId}
@@ -519,22 +530,24 @@ export function TemplateEditorModal({
                 </div>
 
                 {/* Center: Canvas */}
-                <div className="flex-1 h-full bg-zinc-900 overflow-auto p-8 flex items-center justify-center relative">
-                  <EditorCanvas
-                    template={state.template}
-                    slide={currentSlide}
-                    layers={currentLayers}
-                    selectedLayerId={state.selectedLayerId}
-                    onSelectLayer={(layerId) => dispatch({ type: 'SELECT_LAYER', layerId })}
-                    onUpdateLayer={updateLayer}
-                    onDeleteLayer={deleteLayer}
-                    readOnly={isReadOnly}
-                    zoom={state.zoom}
-                  />
+                <div className="flex-1 h-full bg-[#111111] overflow-hidden p-8 flex items-center justify-center relative">
+                  <div className="relative w-full h-full flex items-center justify-center overflow-auto scrollbar-hide">
+                    <EditorCanvas
+                      template={state.template}
+                      slide={currentSlide}
+                      layers={currentLayers}
+                      selectedLayerId={state.selectedLayerId}
+                      onSelectLayer={(layerId) => dispatch({ type: 'SELECT_LAYER', layerId })}
+                      onUpdateLayer={updateLayer}
+                      onDeleteLayer={deleteLayer}
+                      readOnly={isReadOnly}
+                      zoom={state.zoom}
+                    />
+                  </div>
                 </div>
 
                 {/* Right: Layer Panel */}
-                <div className="w-[260px] h-full shrink-0 z-20">
+                <div className="w-[320px] h-full shrink-0 z-40 border-l border-zinc-700">
                   <LayerPanel
                     layers={currentLayers}
                     selectedLayerId={state.selectedLayerId}
@@ -550,7 +563,7 @@ export function TemplateEditorModal({
                         position: currentLayers.length,
                         x: 50,
                         y: 50,
-                        width: 80,
+                        width: 65,
                         height: 20,
                         text_content: 'New Text',
                         font_family: 'TikTok Sans',
@@ -591,7 +604,7 @@ export function TemplateEditorModal({
                     readOnly={isReadOnly}
                   />
                 </div>
-              </DndContext>
+              </>
             )}
           </div>
         </DialogContent>

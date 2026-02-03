@@ -12,9 +12,11 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Upload, Video } from 'lucide-react'
+import { Upload, Video, Image as ImageIcon, Check } from 'lucide-react'
 import { TemplateSlide, BackgroundType } from './types'
 import { toast } from 'sonner'
+import Image from 'next/image'
+import { cn } from '@/lib/utils'
 
 interface SlideBackgroundControlsProps {
   slide: TemplateSlide
@@ -318,24 +320,50 @@ export function SlideBackgroundControls({
       )}
 
       {slide.background_type === 'image' && slide.background_collection_id && (
-        <div className="space-y-1">
+        <div className="space-y-2">
           <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Image</Label>
-            <Select
-              value={slide.background_image_id || ''}
-              onValueChange={(val) => onUpdate({ background_image_id: val })}
-              disabled={readOnly}
-            >
-            <SelectTrigger className="h-7 text-[11px] font-bold bg-zinc-900 border-zinc-700 text-[#dbdbdb]">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent className="rounded-lg max-h-[250px] bg-zinc-800 border-zinc-700">
-              {images.map((image) => (
-                <SelectItem key={image.id} value={image.id} className="text-[11px] text-[#dbdbdb]">
-                  {image.filename || image.id.substring(0, 8)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="grid grid-cols-3 gap-2 max-h-[200px] overflow-y-auto scrollbar-hide p-1 bg-zinc-900/50 rounded-lg border border-zinc-800">
+            {images.length === 0 ? (
+              <div className="col-span-3 text-center py-6 text-[#dbdbdb]/40 text-[10px] italic">
+                No images in collection
+              </div>
+            ) : (
+              images.map((image) => (
+                <button
+                  key={image.id}
+                  onClick={() => !readOnly && onUpdate({ background_image_id: image.id })}
+                  disabled={readOnly}
+                  className={cn(
+                    "group relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
+                    slide.background_image_id === image.id
+                      ? "border-[#ddfc7b] ring-2 ring-[#ddfc7b]/30"
+                      : "border-zinc-800 hover:border-zinc-700"
+                  )}
+                >
+                  {image.url ? (
+                    <Image
+                      src={image.url}
+                      alt={image.filename || 'Image'}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                      <ImageIcon className="size-4 text-[#dbdbdb]/40" />
+                    </div>
+                  )}
+                  {slide.background_image_id === image.id && (
+                    <div className="absolute inset-0 bg-[#ddfc7b]/20 flex items-center justify-center">
+                      <div className="size-5 rounded-full bg-[#ddfc7b] flex items-center justify-center">
+                        <Check className="size-3 text-[#171717]" />
+                      </div>
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
         </div>
       )}
     </div>

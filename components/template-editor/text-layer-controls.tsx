@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { TemplateLayer, FontFamily, FontWeight, TextAlign } from './types'
 import { FONT_FAMILIES, FONT_WEIGHTS, TEXT_ALIGNS, MIN_FONT_SIZE, MAX_FONT_SIZE, MIN_STROKE_WIDTH, MAX_STROKE_WIDTH } from './constants'
@@ -36,33 +37,58 @@ export function TextLayerControls({ layer, onUpdate, readOnly }: TextLayerContro
   return (
     <div className="space-y-3">
       {/* Style Presets */}
-      <div className="space-y-1.5">
-        <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Style Presets</Label>
-        <div className="flex gap-1.5">
-          <Button
-            variant="outline"
-            size="sm"
+      <div className="space-y-2">
+        <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/40">Style Presets</Label>
+        <div className="grid grid-cols-3 gap-2">
+          <button
             onClick={() => applyPreset('basic')}
-            className="flex-1 h-7 text-[9px] font-bold border-zinc-700 bg-zinc-900 text-[#dbdbdb] hover:bg-zinc-700 px-1"
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 p-2 rounded-xl border-2 transition-all hover:scale-[1.05] active:scale-95",
+              layer.stroke_width === 0 && !layer.background_color
+                ? "border-[#ddfc7b] bg-zinc-800"
+                : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+            )}
           >
-            Basic
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            <div className="w-full aspect-square bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-800 shadow-inner">
+              <span className="text-[12px] font-bold text-white font-['TikTok_Sans']">Aa</span>
+            </div>
+            <span className="text-[9px] font-bold text-[#dbdbdb]/60">Basic</span>
+          </button>
+
+          <button
             onClick={() => applyPreset('border')}
-            className="flex-1 h-7 text-[9px] font-bold border-zinc-700 bg-zinc-900 text-[#dbdbdb] hover:bg-zinc-700 px-1"
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 p-2 rounded-xl border-2 transition-all hover:scale-[1.05] active:scale-95",
+              layer.stroke_width && layer.stroke_width > 0
+                ? "border-[#ddfc7b] bg-zinc-800"
+                : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+            )}
           >
-            Border
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
+            <div className="w-full aspect-square bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-800 shadow-inner">
+              <span 
+                className="text-[12px] font-bold text-white font-['TikTok_Sans']"
+                style={{ textShadow: '1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000' }}
+              >
+                Aa
+              </span>
+            </div>
+            <span className="text-[9px] font-bold text-[#dbdbdb]/60">Border</span>
+          </button>
+
+          <button
             onClick={() => applyPreset('pill')}
-            className="flex-1 h-7 text-[9px] font-bold border-zinc-700 bg-zinc-900 text-[#dbdbdb] hover:bg-zinc-700 px-1"
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 p-2 rounded-xl border-2 transition-all hover:scale-[1.05] active:scale-95",
+              layer.background_color
+                ? "border-[#ddfc7b] bg-zinc-800"
+                : "border-zinc-800 bg-zinc-900/50 hover:border-zinc-700"
+            )}
           >
-            Pill
-          </Button>
+            <div className="w-full aspect-square bg-zinc-900 rounded-lg flex items-center justify-center border border-zinc-800 shadow-inner">
+              <span className="px-1.5 py-0.5 bg-white text-[#000] rounded-sm text-[10px] font-bold font-['TikTok_Sans'] leading-none">Aa</span>
+            </div>
+            <span className="text-[9px] font-bold text-[#dbdbdb]/60">Pill</span>
+          </button>
         </div>
       </div>
 
@@ -262,20 +288,39 @@ export function TextLayerControls({ layer, onUpdate, readOnly }: TextLayerContro
         </div>
       </div>
 
-      <div className="space-y-1.5">
+      <div className="space-y-1.5 pt-1 border-t border-zinc-700">
         <div className="flex items-center justify-between">
-          <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Width</Label>
-          <span className="text-[10px] font-bold text-[#dbdbdb]">{layer.width}%</span>
+          <div className="space-y-0.5">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Fixed Text</Label>
+            <p className="text-[9px] text-[#dbdbdb]/40">Don't change with AI</p>
+          </div>
+          <Switch
+            checked={!!layer.is_fixed}
+            onCheckedChange={(checked) => onUpdate({ is_fixed: checked })}
+            className="scale-75 data-[state=checked]:bg-[#ddfc7b]"
+          />
         </div>
-        <Slider
-          value={[layer.width]}
-          onValueChange={([value]) => onUpdate({ width: value })}
-          min={10}
-          max={500}
-          step={5}
-          className="py-1"
-          disabled={readOnly}
-        />
+      </div>
+
+      <div className="space-y-1.5 pt-1 border-t border-zinc-700">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60 mb-2">Sizing</div>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Width</Label>
+              <span className="text-[10px] font-bold text-[#dbdbdb]">{layer.width}%</span>
+            </div>
+            <Slider
+              value={[layer.width]}
+              onValueChange={([value]) => onUpdate({ width: value })}
+              min={10}
+              max={500}
+              step={5}
+              className="py-1"
+              disabled={readOnly}
+            />
+          </div>
+        </div>
       </div>
     </div>
   )

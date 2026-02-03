@@ -139,9 +139,11 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
 
     case 'REORDER_LAYERS': {
       const slideLayers = state.layers[action.slideId] || []
+      const totalLayers = action.layerIds.length
       const reorderedLayers = action.layerIds.map((id, idx) => {
         const layer = slideLayers.find(l => l.id === id)
-        return layer ? { ...layer, position: idx } : null
+        // Reverse position: first item in list (top) gets highest position number
+        return layer ? { ...layer, position: totalLayers - 1 - idx } : null
       }).filter(Boolean) as TemplateLayer[]
       
       return {
@@ -180,16 +182,16 @@ function editorReducer(state: EditorState, action: EditorAction): EditorState {
         template: action.template || {
           name: 'New Template',
           type: 'carousel',
-          aspect_ratio: '9:16',
-          width: 1080,
-          height: 1920
+          aspect_ratio: '3:4',
+          width: 1500,
+          height: 2000
         },
         slides: [],
         layers: {},
         selectedSlideId: null,
         selectedLayerId: null,
         isDirty: false,
-        zoom: 1.0
+        zoom: 0.9
       }
 
     default:
@@ -202,16 +204,16 @@ export function useEditorState(initialTemplate?: any) {
     template: initialTemplate || {
       name: 'New Template',
       type: 'carousel',
-      aspect_ratio: '9:16',
-      width: 1080,
-      height: 1920
+      aspect_ratio: '3:4',
+      width: 1500,
+      height: 2000
     },
     slides: [],
     layers: {},
     selectedSlideId: null,
     selectedLayerId: null,
     isDirty: false,
-    zoom: 1.0
+    zoom: 0.9
   }
 
   const [state, dispatch] = useReducer(editorReducer, initialState)

@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { 
   Layout, 
@@ -16,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Select,
   SelectContent,
@@ -44,7 +46,9 @@ import { TemplateEditorModal } from "@/components/template-editor/template-edito
 import { EditorCanvas } from "@/components/template-editor/editor-canvas"
 import { TemplateSlide, TemplateLayer } from "@/components/template-editor/types"
 
-export default function TemplatesPage() {
+function TemplatesPageContent() {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [templates, setTemplates] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -52,10 +56,23 @@ export default function TemplatesPage() {
   const [visibilityFilter, setVisibilityFilter] = useState<string>("all") // "all", "private", "public"
   const [showEditorModal, setShowEditorModal] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [autoEditMode, setAutoEditMode] = useState(false)
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null)
   const [deleteTemplateId, setDeleteTemplateId] = useState<string | null>(null)
   
   const supabase = useMemo(() => createClient(), [])
+
+  // Check for ?new=true query param to auto-open new template modal
+  useEffect(() => {
+    if (searchParams.get('new') === 'true' && !loading && currentOrgId) {
+      setAutoEditMode(false)
+      setSelectedTemplateId(null)
+      setShowEditorModal(true)
+      // Clear the query param
+      router.replace('/templates', { scroll: false })
+    }
+  }, [searchParams, loading, currentOrgId, router])
+
 
   const loadTemplates = async () => {
     try {
@@ -286,11 +303,13 @@ export default function TemplatesPage() {
   })
 
   const handleTemplateClick = (template: any) => {
+    setAutoEditMode(false)
     setSelectedTemplateId(template.id)
     setShowEditorModal(true)
   }
 
   const handleCreateNew = () => {
+    setAutoEditMode(false)
     setSelectedTemplateId(null)
     setShowEditorModal(true)
   }
@@ -301,8 +320,28 @@ export default function TemplatesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-[#dbdbdb]/60">Loading templates...</div>
+      <div className="min-h-screen pb-10">
+        <div className="max-w-[1000px] mx-auto px-6 pt-10">
+          <div className="flex flex-col gap-8">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-48 bg-zinc-800" />
+                <Skeleton className="h-4 w-64 bg-zinc-800" />
+              </div>
+              <Skeleton className="h-10 w-36 rounded-xl bg-zinc-800" />
+            </div>
+            <div className="flex gap-3">
+              <Skeleton className="h-11 flex-1 rounded-xl bg-zinc-800" />
+              <Skeleton className="h-11 w-[140px] rounded-xl bg-zinc-800" />
+              <Skeleton className="h-11 w-[140px] rounded-xl bg-zinc-800" />
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              {[...Array(8)].map((_, i) => (
+                <Skeleton key={i} className="aspect-[9/16] w-full bg-zinc-800" />
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     )
   }
@@ -446,7 +485,9 @@ export default function TemplatesPage() {
                         <DropdownMenuItem 
                           onClick={(e) => {
                             e.stopPropagation()
-                            handleTemplateClick(template)
+                            setAutoEditMode(true)
+                            setSelectedTemplateId(template.id)
+                            setShowEditorModal(true)
                           }}
                           className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
                         >
@@ -516,12 +557,26 @@ export default function TemplatesPage() {
       {currentOrgId && (
         <TemplateEditorModal
           open={showEditorModal}
-          onOpenChange={setShowEditorModal}
+          onOpenChange={(open) => {
+            setShowEditorModal(open)
+            if (!open) {
+              setAutoEditMode(false) // Reset when modal closes
+            }
+          }}
           templateId={selectedTemplateId}
           organizationId={currentOrgId}
           onSaved={loadTemplates}
+          autoEdit={autoEditMode}
         />
       )}
     </div>
+  )
+}
+
+export default function TemplatesPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TemplatesPageContent />
+    </Suspense>
   )
 }
