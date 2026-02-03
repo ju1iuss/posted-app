@@ -1,8 +1,9 @@
 "use client"
 
+import Image from "next/image"
 import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { LayoutDashboard, Users, FileText, BarChart3, Sparkles, Plus, Settings } from "lucide-react"
+import { LayoutDashboard, Users, FileText, BarChart3, Plus, Settings } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { createClient } from "@/lib/supabase/client"
 import Link from "next/link"
@@ -254,8 +255,14 @@ export default function DashboardPage() {
             <div className="space-y-4">
               {recentActivity.length > 0 ? recentActivity.map((activity) => (
                 <div key={activity.id} className="flex items-center gap-4 p-3 rounded-lg bg-zinc-800/50 border border-zinc-700/50">
-                  <div className="size-8 rounded-full bg-[#ddfc7b]/10 flex items-center justify-center">
-                    <Sparkles className="size-4 text-[#ddfc7b]" />
+                  <div className="size-8 rounded-lg overflow-hidden border border-zinc-700/50 flex-shrink-0">
+                    <Image 
+                      src="/logo.svg" 
+                      alt="Posted" 
+                      width={32} 
+                      height={32}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <div className="flex-1">
                     <p className="text-xs font-bold text-[#dbdbdb]">{activity.title}</p>

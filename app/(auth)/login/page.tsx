@@ -1,11 +1,12 @@
 "use client"
 
+import Image from "next/image"
 import { useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Github, Mail, Sparkles, Chrome } from "lucide-react"
+import { Github, Mail, Chrome } from "lucide-react"
 import { toast } from "sonner"
 
 export default function LoginPage() {
@@ -46,8 +47,14 @@ export default function LoginPage() {
       <Card className="w-full max-w-md border-zinc-700 shadow-xl shadow-black/20 backdrop-blur-sm bg-zinc-800/80">
         <CardHeader className="space-y-4 pb-8">
           <div className="flex justify-center">
-            <div className="size-12 rounded-2xl bg-[#ddfc7b] flex items-center justify-center shadow-lg">
-              <Sparkles className="size-6 text-[#171717]" />
+            <div className="size-16 rounded-2xl overflow-hidden shadow-lg border border-zinc-700/50">
+              <Image 
+                src="/logo.svg" 
+                alt="Posted Logo" 
+                width={64} 
+                height={64}
+                className="w-full h-full object-cover"
+              />
             </div>
           </div>
           <div className="space-y-1 text-center">

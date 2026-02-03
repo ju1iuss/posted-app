@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import { useEffect, useState, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { 
@@ -13,7 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Building2, Sparkles, Users, ArrowLeft } from "lucide-react"
+import { Building2, Users, ArrowLeft } from "lucide-react"
 
 type View = 'choice' | 'create' | 'join'
 
@@ -118,8 +119,14 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
               <>
                 <DialogHeader className="space-y-4">
                   <div className="flex justify-center">
-                    <div className="size-12 rounded-2xl bg-[#ddfc7b] flex items-center justify-center shadow-lg">
-                      <Building2 className="size-6 text-[#171717]" />
+                    <div className="size-16 rounded-2xl overflow-hidden border border-zinc-700/50 shadow-lg">
+                      <Image 
+                        src="/logo.svg" 
+                        alt="Posted" 
+                        width={64} 
+                        height={64}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   </div>
                   <div className="space-y-1 text-center">
@@ -134,8 +141,14 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     onClick={() => setView('create')}
                     className="w-full h-14 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl flex items-center justify-start px-4 gap-4"
                   >
-                    <div className="size-10 rounded-lg bg-[#171717]/10 flex items-center justify-center">
-                      <Sparkles className="size-5" />
+                    <div className="size-10 rounded-lg overflow-hidden border border-[#171717]/10 flex items-center justify-center">
+                      <Image 
+                        src="/logo.svg" 
+                        alt="Posted" 
+                        width={40} 
+                        height={40}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                     <div className="text-left">
                       <div className="font-semibold">Create Workspace</div>
@@ -170,8 +183,14 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     <ArrowLeft className="size-4" />
                   </button>
                   <div className="flex justify-center">
-                    <div className="size-12 rounded-2xl bg-[#ddfc7b] flex items-center justify-center shadow-lg">
-                      <Sparkles className="size-6 text-[#171717]" />
+                    <div className="size-16 rounded-2xl overflow-hidden border border-zinc-700/50 shadow-lg">
+                      <Image 
+                        src="/logo.svg" 
+                        alt="Posted" 
+                        width={64} 
+                        height={64}
+                        className="w-full h-full object-cover"
+                      />
                     </div>
                   </div>
                   <div className="space-y-1 text-center">

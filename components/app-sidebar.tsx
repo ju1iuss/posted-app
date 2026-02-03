@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { useEffect, useState, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
@@ -252,7 +253,20 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar className="bg-[#171717] backdrop-blur-xl">
-        <SidebarHeader className="px-3 pt-6 pb-2 space-y-3">
+        <SidebarHeader className="px-3 pt-6 pb-2 space-y-4">
+          <div className="flex items-center gap-3 px-2 mb-2">
+            <div className="size-8 rounded-lg overflow-hidden border border-zinc-700/50 flex-shrink-0 shadow-sm">
+              <Image 
+                src="/logo.svg" 
+                alt="Posted" 
+                width={32} 
+                height={32}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <span className="text-lg font-black tracking-tighter text-[#dbdbdb] uppercase">Posted</span>
+          </div>
+
           <div className="px-1 pb-2">
             <OrganizationSelect 
               organizations={organizations}
