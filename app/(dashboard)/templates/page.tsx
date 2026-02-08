@@ -433,11 +433,11 @@ function TemplatesPageContent() {
                   )}
                   
                   {/* Overlay Gradient */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity pointer-events-none" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity pointer-events-none z-10" />
                 </div>
 
                 {/* Badges */}
-                <div className="absolute top-2.5 left-2.5 flex flex-col gap-1">
+                <div className="absolute top-2.5 left-2.5 flex flex-col gap-1 z-20">
                   {template.is_premade && (
                     <Badge 
                       className="bg-[#ddfc7b]/90 backdrop-blur-md text-[#171717] border-none shadow-sm text-[8px] px-1.5 py-0 font-bold uppercase"
@@ -448,7 +448,7 @@ function TemplatesPageContent() {
                 </div>
 
                 {/* Content Overlay */}
-                <div className="absolute inset-x-0 bottom-0 p-3 flex flex-col gap-1.5">
+                <div className="absolute inset-x-0 bottom-0 p-3 flex flex-col gap-1.5 z-20">
                   <div className="flex items-start justify-between">
                     <h3 className="font-bold text-white text-xs line-clamp-2 leading-tight drop-shadow-sm">
                       {template.name}

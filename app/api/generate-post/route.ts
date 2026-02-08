@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 interface GeneratePostRequest {
   accountId: string
   templateId: string
+  prompt?: string
 }
 
 interface PostContent {
@@ -25,7 +26,7 @@ interface PostContent {
 export async function POST(request: NextRequest) {
   try {
     const body: GeneratePostRequest = await request.json()
-    const { accountId, templateId } = body
+    const { accountId, templateId, prompt: clientPrompt } = body
 
     console.log('[generate-post] Starting generation for account:', accountId, 'template:', templateId)
 
@@ -267,15 +268,17 @@ export async function POST(request: NextRequest) {
       }
     })
 
-    // Build AI prompt
-    const accountPrompt = account.prompt || 'Create engaging social media content.'
+    // Build AI prompt - prefer client-provided prompt (most up-to-date), fall back to DB
+    const accountPrompt = clientPrompt || account.prompt || 'Create engaging social media content.'
     
-    const systemPrompt = `You are a content creator generating text for social media posts. Your task is to fill in text layers for a ${template.type} template based on the user's content direction.
+    const systemPrompt = `You are generating text for social media posts. Fill in text layers for a ${template.type} template based on the user's content direction.
 
 IMPORTANT RULES:
-1. Text content for images (text_content fields): NO hashtags allowed, just engaging text
-2. Title: Short, punchy line (max 10 words) that captures attention
-3. Caption: Social media caption with max 3 relevant hashtags at the end
+1. Text content for images (text_content fields): NO hashtags allowed, use simple, natural language
+2. Title: Short and simple (max 8 words). Write like a real person, not marketing copy. Avoid hype words.
+3. Caption: Natural, casual caption (max 2 hashtags at the end). Write conversationally, like you're talking to a friend. No excessive enthusiasm or AI-sounding phrases.
+
+Use simple language. Avoid marketing speak, excessive exclamation marks, or phrases that sound AI-generated. Write like a normal person would write.
 
 Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the JSON object.`
 
@@ -283,15 +286,22 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
     promptText += `Template: ${template.name}\n\n`
     promptText += `This template has ${slides.length} slide(s). Each slide contains text layers that need to be filled:\n\n`
 
-    const slidesWithText: typeof slides = []
+    // Use simple IDs for the AI prompt to avoid UUID mangling, then map back
+    const slidesWithText: { slide: typeof slides[0], simpleId: string, layers: { layer: typeof layers extends (infer T)[] ? T : never, simpleId: string }[] }[] = []
+    
     slides.forEach((slide, idx) => {
       const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
       if (slideLayers.length > 0) {
-        slidesWithText.push(slide)
-        promptText += `Slide ${idx + 1} (position ${slide.position}):\n`
-        slideLayers.forEach((layer, layerIdx) => {
-          const placeholder = layer.text_content || `Text layer ${layerIdx + 1}`
-          promptText += `  - Layer ID "${layer.id}": ${placeholder}\n`
+        const simpleSlideId = `slide_${idx + 1}`
+        const simpleLayers = slideLayers.map((layer, layerIdx) => ({
+          layer,
+          simpleId: `layer_${idx + 1}_${layerIdx + 1}`
+        }))
+        slidesWithText.push({ slide, simpleId: simpleSlideId, layers: simpleLayers })
+        promptText += `Slide ${idx + 1}:\n`
+        simpleLayers.forEach(({ layer, simpleId }) => {
+          const placeholder = layer.text_content || `Text`
+          promptText += `  - "${simpleId}": currently says "${placeholder}" - rewrite this\n`
         })
         promptText += '\n'
       }
@@ -299,27 +309,35 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
 
     promptText += `\nReturn ONLY valid JSON in this exact format:\n`
     promptText += `{\n`
-    promptText += `  "title": "Short punchy title here (no hashtags)",\n`
-    promptText += `  "caption": "Engaging caption text here #hashtag1 #hashtag2 #hashtag3",\n`
+    promptText += `  "title": "Simple title here (no hashtags, max 8 words)",\n`
+    promptText += `  "caption": "Natural caption text here #hashtag1 #hashtag2",\n`
     promptText += `  "slides": [\n`
-    slidesWithText.forEach((slide, idx) => {
-      const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
+    slidesWithText.forEach(({ simpleId: slideId, layers: simpleLayers }, idx) => {
       promptText += `    {\n`
-      promptText += `      "slide_id": "${slide.id}",\n`
-      promptText += `      "position": ${slide.position},\n`
+      promptText += `      "slide_id": "${slideId}",\n`
       promptText += `      "layers": [\n`
-      slideLayers.forEach((layer, layerIdx) => {
+      simpleLayers.forEach(({ simpleId }, layerIdx) => {
         promptText += `        {\n`
-        promptText += `          "layer_id": "${layer.id}",\n`
+        promptText += `          "layer_id": "${simpleId}",\n`
         promptText += `          "text_content": "your generated text here (NO HASHTAGS)"\n`
-        promptText += `        }${layerIdx < slideLayers.length - 1 ? ',' : ''}\n`
+        promptText += `        }${layerIdx < simpleLayers.length - 1 ? ',' : ''}\n`
       })
       promptText += `      ]\n`
       promptText += `    }${idx < slidesWithText.length - 1 ? ',' : ''}\n`
     })
     promptText += `  ]\n`
     promptText += `}\n\n`
-    promptText += `Remember: text_content must NOT contain any hashtags. Title should be short and punchy. Caption should have max 3 hashtags at the end.`
+    promptText += `IMPORTANT: Use the EXACT slide_id and layer_id values shown above. Do NOT change them. text_content must NOT contain any hashtags. Title should be short and simple (max 8 words), written naturally. Caption should be casual and conversational with max 2 hashtags at the end. Avoid marketing speak, excessive enthusiasm, or AI-sounding phrases. Write like a real person.`
+    
+    // Build mapping from simple IDs back to real UUIDs
+    const slideIdMap = new Map<string, string>() // simple_id -> real UUID
+    const layerIdMap = new Map<string, string>() // simple_id -> real UUID
+    slidesWithText.forEach(({ slide, simpleId, layers: simpleLayers }) => {
+      slideIdMap.set(simpleId, slide.id)
+      simpleLayers.forEach(({ layer, simpleId: layerSimpleId }) => {
+        layerIdMap.set(layerSimpleId, layer.id)
+      })
+    })
 
     // Call fal.ai OpenRouter
     const falKey = process.env.FAL_KEY
@@ -407,9 +425,44 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
       console.log('[generate-post] Slide', slide.id, 'has', slideLayers.length, 'layers')
       
       const contentLayers = slideLayers.map(layer => {
-        const generatedLayer = generatedContent.slides
-          ?.find(s => s.slide_id === slide.id)
-          ?.layers?.find(l => l.layer_id === layer.id)
+        // Find AI-generated content - try both simple ID mapping and direct UUID matching
+        let generatedLayer: any = null
+        
+        // First: try matching via simple IDs (most reliable)
+        for (const genSlide of (generatedContent.slides || [])) {
+          // Check if this genSlide maps to our current slide via simple ID
+          const realSlideId = slideIdMap.get(genSlide.slide_id)
+          if (realSlideId === slide.id) {
+            for (const genLayer of (genSlide.layers || [])) {
+              const realLayerId = layerIdMap.get(genLayer.layer_id)
+              if (realLayerId === layer.id) {
+                generatedLayer = genLayer
+                break
+              }
+            }
+            break
+          }
+        }
+        
+        // Fallback: try direct UUID matching (in case AI returned UUIDs correctly)
+        if (!generatedLayer) {
+          generatedLayer = generatedContent.slides
+            ?.find(s => s.slide_id === slide.id)
+            ?.layers?.find(l => l.layer_id === layer.id) || null
+        }
+
+        // Fallback: positional matching as last resort
+        if (!generatedLayer && layer.type === 'text' && !layer.is_fixed) {
+          const slideEntry = slidesWithText.find(s => s.slide.id === slide.id)
+          if (slideEntry) {
+            const slideIdx = slidesWithText.indexOf(slideEntry)
+            const layerIdx = slideEntry.layers.findIndex(l => l.layer.id === layer.id)
+            if (slideIdx >= 0 && layerIdx >= 0 && generatedContent.slides?.[slideIdx]?.layers?.[layerIdx]) {
+              generatedLayer = generatedContent.slides[slideIdx].layers[layerIdx]
+              console.log('[generate-post] Text layer', layer.id, 'matched by POSITION (slide', slideIdx, 'layer', layerIdx, ')')
+            }
+          }
+        }
 
         const layerData: any = {
           layer_id: layer.id
@@ -422,10 +475,10 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
             console.log('[generate-post] Text layer', layer.id, 'is FIXED, using original content')
           } else if (generatedLayer?.text_content) {
             layerData.text_content = generatedLayer.text_content
-            console.log('[generate-post] Text layer', layer.id, 'content:', layerData.text_content?.substring(0, 30))
+            console.log('[generate-post] Text layer', layer.id, 'MATCHED, content:', layerData.text_content?.substring(0, 50))
           } else {
             layerData.text_content = layer.text_content
-            console.log('[generate-post] Text layer', layer.id, 'NO AI CONTENT, using original content')
+            console.log('[generate-post] Text layer', layer.id, 'NO AI CONTENT FOUND, using original. AI response slides:', JSON.stringify(generatedContent.slides?.map(s => s.slide_id)))
           }
         }
 

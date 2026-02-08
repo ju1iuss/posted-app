@@ -18,9 +18,10 @@ interface OrganizationSelectProps {
   organizations: any[]
   currentOrg: any
   onOrgChange: (org: any) => void
+  onCreateOrg?: () => void
 }
 
-export function OrganizationSelect({ organizations, currentOrg, onOrgChange }: OrganizationSelectProps) {
+export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onCreateOrg }: OrganizationSelectProps) {
   if (!currentOrg) return <div className="h-8 w-32 animate-pulse bg-zinc-800 rounded-lg" />
 
   return (
@@ -64,7 +65,10 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange }: O
           </DropdownMenuItem>
         ))}
         <DropdownMenuSeparator className="my-1 bg-zinc-700" />
-        <DropdownMenuItem className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer text-[#dbdbdb]/60 transition-all hover:text-[#dbdbdb] focus:bg-zinc-700">
+        <DropdownMenuItem 
+          onClick={() => onCreateOrg?.()}
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer text-[#dbdbdb]/60 transition-all hover:text-[#dbdbdb] focus:bg-zinc-700"
+        >
           <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-zinc-600">
             <Plus className="size-3" />
           </div>

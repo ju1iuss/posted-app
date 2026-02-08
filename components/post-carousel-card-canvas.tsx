@@ -79,11 +79,11 @@ export function PostCarouselCardCanvas({
   return (
     <div 
       ref={containerRef}
-      className={cn("flex items-center justify-center w-full h-full", className)}
+      className={cn("grid place-items-center w-full h-full min-h-0 min-w-0", className)}
     >
       <div
         data-canvas
-        className="relative overflow-hidden"
+        className="relative overflow-hidden shrink-0"
         style={canvasStyle}
       >
         {/* Background */}

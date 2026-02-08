@@ -2,6 +2,7 @@
 
 import Image from "next/image"
 import { useEffect, useState, useMemo } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { 
   Dialog, 
@@ -26,6 +27,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
   const [creating, setCreating] = useState(false)
   const [view, setView] = useState<View>('choice')
   const supabase = useMemo(() => createClient(), [])
+  const router = useRouter()
 
   useEffect(() => {
     async function checkOrg() {
@@ -82,12 +84,12 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
 
       if (memberError) throw memberError
 
-      setHasOrg(true)
-      toast.success("Workspace created successfully!")
+      toast.success("Workspace created! Now let's set up your subscription.")
+      // Redirect to subscribe page for payment
+      router.push('/subscribe')
     } catch (error: any) {
       console.error(error)
       toast.error(error.message || "Failed to create workspace")
-    } finally {
       setCreating(false)
     }
   }
@@ -98,11 +100,23 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
     setCreating(true)
 
     try {
-      // For now, show a message that they need an invite
-      toast.info("Ask your team admin to invite you to their workspace.")
+      const response = await fetch('/api/organizations/join', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviteCode: inviteCode.trim() }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to join workspace')
+      }
+
+      toast.success(`Joined ${data.organizationName} successfully!`)
+      // Refresh the page to load the new organization
+      window.location.reload()
     } catch (error: any) {
       toast.error(error.message || "Failed to join workspace")
-    } finally {
       setCreating(false)
     }
   }

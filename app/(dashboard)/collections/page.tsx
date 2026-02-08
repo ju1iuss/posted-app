@@ -15,7 +15,8 @@ import {
   X,
   Loader2,
   ChevronLeft,
-  Filter
+  Filter,
+  Maximize
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -78,6 +79,9 @@ export default function CollectionsPage() {
   // Delete Dialog State
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [collectionToDelete, setCollectionToDelete] = useState<string | null>(null)
+
+  // Expanded Image State
+  const [expandedImage, setExpandedImage] = useState<string | null>(null)
 
   const supabase = useMemo(() => createClient(), [])
 
@@ -785,17 +789,29 @@ export default function CollectionsPage() {
                 className="group flex flex-col gap-3 p-2 rounded-2xl border border-zinc-700 bg-zinc-800 hover:border-zinc-400 transition-all cursor-pointer shadow-sm hover:shadow-md"
               >
                 {/* 2x2 Thumbnail Grid */}
-                <div className="aspect-square w-full grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden bg-zinc-900">
+                <div className="aspect-square w-full grid grid-cols-2 grid-rows-2 gap-1 rounded-xl overflow-hidden bg-zinc-900 relative group/thumb">
                   {[0, 1, 2, 3].map((idx) => (
-                    <div key={idx} className="relative w-full h-full bg-zinc-900">
+                    <div key={idx} className="relative w-full h-full bg-zinc-900 group/item">
                       {collection.preview_images?.[idx] ? (
-                        <Image
-                          src={collection.preview_images[idx]}
-                          alt={`${collection.name} preview ${idx}`}
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
+                        <>
+                          <Image
+                            src={collection.preview_images[idx]}
+                            alt={`${collection.name} preview ${idx}`}
+                            fill
+                            className="object-cover"
+                            unoptimized
+                          />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setExpandedImage(collection.preview_images[idx])
+                            }}
+                            className="absolute top-1 right-1 size-6 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm opacity-0 group-hover/item:opacity-100 transition-opacity flex items-center justify-center text-white z-10"
+                            title="View larger"
+                          >
+                            <Maximize className="size-3" />
+                          </button>
+                        </>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <ImageIcon className="size-4 text-zinc-700" />
@@ -983,11 +999,22 @@ export default function CollectionsPage() {
                         className="object-cover"
                         unoptimized
                       />
-                      {/* Delete Overlay */}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      {/* Action Overlay */}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setExpandedImage(ci.image.url)
+                          }}
+                          className="size-8 rounded-full bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95"
+                          title="View larger"
+                        >
+                          <Maximize className="size-4" />
+                        </button>
                         <button
                           onClick={() => removeImageFromCollection(ci.id)}
                           className="size-8 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-110 active:scale-95"
+                          title="Delete"
                         >
                           <Trash2 className="size-4" />
                         </button>
@@ -1031,6 +1058,29 @@ export default function CollectionsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Expanded Image Modal */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-200"
+          onClick={() => setExpandedImage(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 size-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all hover:scale-110 z-[110]"
+            onClick={() => setExpandedImage(null)}
+          >
+            <X className="size-6" />
+          </button>
+          <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <img 
+              src={expandedImage} 
+              className="w-auto h-auto max-w-full max-h-[90vh] object-contain"
+              alt="Expanded view"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

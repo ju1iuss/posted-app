@@ -28,6 +28,7 @@ export default function AIImageCreator() {
   const [productImage, setProductImage] = useState<string | null>(null)
   const [selectedRefImage, setSelectedRefImage] = useState<string | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [regeneratingImageId, setRegeneratingImageId] = useState<string | null>(null)
   const [generatedImages, setGeneratedImages] = useState<any[]>([])
   const [inspoImages, setInspoImages] = useState<InspoImage[]>([])
   const [categories, setCategories] = useState<string[]>([])
@@ -221,7 +222,7 @@ export default function AIImageCreator() {
     }
   }
 
-  const handleGenerate = async (refImage: string, redoInstructions?: string) => {
+  const handleGenerate = async (refImage: string, redoInstructions?: string, existingImageId?: string) => {
     if (!productImage) {
       toast.error("Please upload a product image first")
       return
@@ -237,6 +238,12 @@ export default function AIImageCreator() {
 
     setSelectedRefImage(refImage)
     setIsGenerating(true)
+    // Track which image is being regenerated (if redoing)
+    if (existingImageId) {
+      setRegeneratingImageId(existingImageId)
+    } else {
+      setRegeneratingImageId(null)
+    }
 
     // Add loading placeholder to generations
     const placeholderId = `loading-${Date.now()}`
@@ -263,8 +270,8 @@ export default function AIImageCreator() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt: `Place this product naturally in this ${vibe} setting. ${instructions}. Maintain professional lighting, high resolution, and preserve the product's details. Make it look like a high-end commercial photo.`,
-          imageUrls: [productImage, refImage],
+          prompt: `Replace the product in this image with the provided product. ${instructions}. Preserve the exact quality, style, lighting, camera angle, and aesthetic of the original photo. If the original is a simple phone shot, keep it simple. If it's a professional product shoot, maintain that professional quality. Match the original photo's characteristics exactly.`,
+          imageUrls: [refImage, productImage],
           organizationId: orgId
         })
       })
@@ -321,6 +328,7 @@ export default function AIImageCreator() {
       toast.error("Generation failed: " + error.message)
     } finally {
       setIsGenerating(false)
+      setRegeneratingImageId(null)
     }
   }
 
@@ -671,7 +679,7 @@ export default function AIImageCreator() {
             // Get the ref image from metadata
             const refImage = selectedGeneratedImage.metadata?.reference_images?.[1]
             if (refImage) {
-              await handleGenerate(refImage, instructions)
+              await handleGenerate(refImage, instructions, selectedGeneratedImage.id)
             } else {
               toast.error("Original reference image not found")
             }
@@ -679,7 +687,7 @@ export default function AIImageCreator() {
           onSaveToCollection={handleSaveToCollection}
           onCreateCollection={handleCreateCollection}
           collections={userCollections}
-          isRedoing={isGenerating}
+          isRedoing={isGenerating && regeneratingImageId === selectedGeneratedImage.id}
           isSaving={isSavingToCollection}
         />
       )}

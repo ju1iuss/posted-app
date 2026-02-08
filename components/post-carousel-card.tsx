@@ -123,9 +123,12 @@ export function PostCarouselCard({
 
         if (slidesError) throw slidesError
 
+        // Safely get slides array from post content
+        const contentSlides = Array.isArray(postContent.slides) ? postContent.slides : []
+
         // Merge background_image_url from post content into slides
         const slidesWithContent = (slidesData || []).map(slide => {
-          const contentSlide = postContent.slides.find(s => s.slide_id === slide.id)
+          const contentSlide = contentSlides.find(s => s.slide_id === slide.id)
           return {
             ...slide,
             background_image_url: contentSlide?.background_image_url || slide.background_image_url
@@ -155,8 +158,9 @@ export function PostCarouselCard({
         const contentMap = new Map<string, string>()
         
         // Create map of layer_id -> text_content from post content
-        postContent.slides.forEach(slide => {
-          slide.layers.forEach(layer => {
+        contentSlides.forEach(slide => {
+          const slideLayers = Array.isArray(slide.layers) ? slide.layers : []
+          slideLayers.forEach(layer => {
             if (layer.text_content) {
               contentMap.set(layer.layer_id, layer.text_content)
             }
@@ -165,8 +169,9 @@ export function PostCarouselCard({
 
         // Create map of layer_id -> image_url from post content
         const imageUrlMap = new Map<string, string>()
-        postContent.slides.forEach(slide => {
-          slide.layers.forEach(layer => {
+        contentSlides.forEach(slide => {
+          const slideLayers = Array.isArray(slide.layers) ? slide.layers : []
+          slideLayers.forEach(layer => {
             if (layer.image_url) {
               imageUrlMap.set(layer.layer_id, layer.image_url)
             }
@@ -476,9 +481,16 @@ export function PostCarouselCard({
     posted: 'Posted'
   }
 
+  // Check if className contains aspect override indicators
+  const hasAspectOverride = className?.includes('!aspect') || className?.includes('aspect-auto') || className?.includes('w-full h-full')
+
   if (loading || !template) {
     return (
-      <div className={cn("relative aspect-[3/4] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-300", className)}>
+      <div className={cn(
+        "relative overflow-hidden transition-all duration-300", 
+        !hasAspectOverride ? "aspect-[3/4] bg-zinc-900 border border-zinc-800" : "w-full h-full",
+        className
+      )}>
         <div className="w-full h-full flex flex-col items-center justify-center gap-3">
           <div className="size-8 border-2 border-[#dbdbdb]/40 border-t-transparent rounded-full animate-spin" />
           <span className="text-[#dbdbdb]/60 text-[10px] font-bold uppercase tracking-tighter">Loading...</span>
@@ -489,7 +501,11 @@ export function PostCarouselCard({
 
   if (sortedSlides.length === 0) {
     return (
-      <div className={cn("relative aspect-[3/4] overflow-hidden bg-zinc-900 border border-zinc-800 transition-all duration-300", className)}>
+      <div className={cn(
+        "relative overflow-hidden transition-all duration-300", 
+        !hasAspectOverride ? "aspect-[3/4] bg-zinc-900 border border-zinc-800" : "w-full h-full",
+        className
+      )}>
         <div className="w-full h-full flex items-center justify-center">
           <span className="text-[#dbdbdb]/60 text-[10px] font-bold uppercase tracking-tighter">No slides</span>
         </div>
@@ -509,25 +525,18 @@ export function PostCarouselCard({
     }
     onExpand?.()
   }
-
+  
   return (
     <div 
       onClick={handleCardClick}
       className={cn(
-        "group relative aspect-[3/4] overflow-hidden bg-zinc-900 border border-zinc-800 hover:border-zinc-700 transition-all duration-300 animate-in fade-in",
+        "group relative overflow-hidden transition-all duration-300 animate-in fade-in flex items-center justify-center",
+        !hasAspectOverride ? "aspect-[3/4] bg-zinc-900 border border-zinc-800 hover:border-zinc-700" : "w-full h-full bg-transparent",
         status === 'posted' ? 'cursor-default' : 'cursor-pointer',
         className
       )}
     >
-      {/* Status badge */}
-      {status === 'posted' && (
-        <div className="absolute top-2 left-2 z-30">
-          <div className="flex items-center gap-1 px-1.5 py-0.5 bg-green-500/80 backdrop-blur-sm rounded-md">
-            <CheckCircle2 className="size-2.5 text-white" />
-            <span className="text-[9px] font-bold text-white uppercase">Posted</span>
-          </div>
-        </div>
-      )}
+      {/* Status badge - removed redundant badge as requested */}
 
       {/* 3-dot menu */}
       <div className="absolute top-2 right-2 z-30" data-dropdown>
@@ -606,29 +615,31 @@ export function PostCarouselCard({
       </div>
 
       {/* Carousel */}
-      <Carousel 
-        setApi={setApi} 
-        className="w-full h-full"
-        opts={{
-          align: "start",
-          loop: false,
-        }}
-      >
-        <CarouselContent className="h-full ml-0 pr-0">
-          {sortedSlides.map((slide) => (
-            <CarouselItem key={slide.id || slide.position} className="h-full pl-0 pr-0 basis-full">
-              <div className="w-full h-full relative flex items-center justify-center">
-                <PostCarouselCardCanvas
-                  template={template}
-                  slide={slide}
-                  layers={layers[slide.id || ''] || []}
-                  imageUrlMap={imageUrlMap}
-                />
-              </div>
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        
+      <div className="relative w-full h-full">
+        <Carousel 
+          setApi={setApi} 
+          className="w-full h-full"
+          opts={{
+            align: "start",
+            loop: false,
+          }}
+        >
+          <CarouselContent className="h-full ml-0 pr-0">
+            {sortedSlides.map((slide) => (
+              <CarouselItem key={slide.id || slide.position} className="h-full pl-0 pr-0 basis-full">
+                <div className="w-full h-full relative flex items-center justify-center">
+                  <PostCarouselCardCanvas
+                    template={template}
+                    slide={slide}
+                    layers={layers[slide.id || ''] || []}
+                    imageUrlMap={imageUrlMap}
+                  />
+                </div>
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+        </Carousel>
+
         {/* Navigation Arrows - Always visible when multiple slides */}
         {count > 1 && (
           <>
@@ -660,7 +671,7 @@ export function PostCarouselCard({
             </button>
           </>
         )}
-      </Carousel>
+      </div>
 
       {/* Slide indicator dots */}
       {count > 1 && (

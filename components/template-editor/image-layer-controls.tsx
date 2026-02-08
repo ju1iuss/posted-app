@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import { Button } from '@/components/ui/button'
-import { Upload, Image as ImageIcon, Check } from 'lucide-react'
+import { Upload, Image as ImageIcon, Check, Maximize, X } from 'lucide-react'
 import { TemplateLayer, ImageSourceType } from './types'
 import { toast } from 'sonner'
 import Image from 'next/image'
@@ -28,6 +28,7 @@ interface ImageLayerControlsProps {
 export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }: ImageLayerControlsProps) {
   const [collections, setCollections] = useState<any[]>([])
   const [images, setImages] = useState<any[]>([])
+  const [expandedImage, setExpandedImage] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
@@ -197,38 +198,54 @@ export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }
                   </div>
                 ) : (
                   images.map((image) => (
-                    <button
+                    <div
                       key={image.id}
-                      onClick={() => !readOnly && onUpdate({ image_id: image.id })}
-                      disabled={readOnly}
-                      className={cn(
-                        "group relative aspect-square rounded-lg overflow-hidden border-2 transition-all",
-                        layer.image_id === image.id
-                          ? "border-[#ddfc7b] ring-2 ring-[#ddfc7b]/30"
-                          : "border-zinc-800 hover:border-zinc-700"
-                      )}
+                      className="group relative aspect-square rounded-lg overflow-hidden"
                     >
-                      {image.url ? (
-                        <Image
-                          src={image.url}
-                          alt={image.filename || 'Image'}
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                          <ImageIcon className="size-4 text-[#dbdbdb]/40" />
-                        </div>
-                      )}
-                      {layer.image_id === image.id && (
-                        <div className="absolute inset-0 bg-[#ddfc7b]/20 flex items-center justify-center">
-                          <div className="size-5 rounded-full bg-[#ddfc7b] flex items-center justify-center">
-                            <Check className="size-3 text-[#171717]" />
+                      <button
+                        onClick={() => !readOnly && onUpdate({ image_id: image.id })}
+                        disabled={readOnly}
+                        className={cn(
+                          "w-full h-full relative border-2 transition-all",
+                          layer.image_id === image.id
+                            ? "border-[#ddfc7b] ring-2 ring-[#ddfc7b]/30"
+                            : "border-zinc-800 hover:border-zinc-700"
+                        )}
+                      >
+                        {image.url ? (
+                          <Image
+                            src={image.url}
+                            alt={image.filename || 'Image'}
+                            fill
+                            className="object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                            <ImageIcon className="size-4 text-[#dbdbdb]/40" />
                           </div>
-                        </div>
+                        )}
+                        {layer.image_id === image.id && (
+                          <div className="absolute inset-0 bg-[#ddfc7b]/20 flex items-center justify-center">
+                            <div className="size-5 rounded-full bg-[#ddfc7b] flex items-center justify-center">
+                              <Check className="size-3 text-[#171717]" />
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                      {image.url && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setExpandedImage(image.url)
+                          }}
+                          className="absolute top-1 right-1 size-6 rounded-md bg-black/60 hover:bg-black/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white z-10"
+                          title="View larger"
+                        >
+                          <Maximize className="size-3" />
+                        </button>
                       )}
-                    </button>
+                    </div>
                   ))
                 )}
               </div>
@@ -295,6 +312,29 @@ export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }
           </div>
         </div>
       </div>
+
+      {/* Expanded Image Modal */}
+      {expandedImage && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-10 animate-in fade-in duration-200"
+          onClick={() => setExpandedImage(null)}
+        >
+          <button 
+            className="absolute top-6 right-6 size-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-all hover:scale-110 z-[110]"
+            onClick={() => setExpandedImage(null)}
+          >
+            <X className="size-6" />
+          </button>
+          <div className="relative max-w-full max-h-full rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <img 
+              src={expandedImage} 
+              className="w-auto h-auto max-w-full max-h-[90vh] object-contain"
+              alt="Expanded view"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

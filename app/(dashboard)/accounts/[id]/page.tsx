@@ -17,7 +17,11 @@ import {
   UserCircle,
   Camera,
   Layout,
-  ChevronDown
+  ChevronDown,
+  Expand,
+  Wand2,
+  Loader2,
+  Check
 } from "lucide-react"
 import Image from "next/image"
 import { 
@@ -58,6 +62,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 const PROFILE_IMAGES = [
   "304f3d97891b0e150af1af0865bc7293.jpg",
@@ -85,6 +95,9 @@ export default function AccountPage() {
   const [showPostModal, setShowPostModal] = useState(false)
   const [postToDelete, setPostToDelete] = useState<string | null>(null)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showPromptModal, setShowPromptModal] = useState(false)
+  const [enhancingPrompt, setEnhancingPrompt] = useState(false)
+  const [showSaved, setShowSaved] = useState(false)
   
   const supabase = useMemo(() => createClient(), [])
 
@@ -302,6 +315,15 @@ export default function AccountPage() {
         .eq('id', accountId)
 
       if (error) throw error
+
+      setShowSaved(true)
+      setTimeout(() => setShowSaved(false), 2000)
+
+      if (field === 'username' || field === 'name') {
+        window.dispatchEvent(new CustomEvent('account-updated', {
+          detail: { id: accountId, [field]: value }
+        }))
+      }
     } catch (error: any) {
       console.error(error)
       setAccount(previousAccount) // Revert on error
@@ -337,6 +359,9 @@ export default function AccountPage() {
       return
     }
 
+    // Ensure the latest prompt is saved to the database before generating
+    await updateAccountField('prompt', account.prompt)
+
     const tempId = `pending-${Date.now()}`
     setPendingPostId(tempId)
 
@@ -369,6 +394,7 @@ export default function AccountPage() {
         body: JSON.stringify({
           accountId: accountId,
           templateId: account.template_id,
+          prompt: account.prompt,
         }),
       })
 
@@ -531,6 +557,16 @@ export default function AccountPage() {
       <div className="max-w-[600px] mx-auto px-4 pt-6">
         {/* Profile Info Section */}
         <div className="flex flex-col gap-4 mb-8">
+          <div className="flex items-center justify-between mb-2 h-6">
+            <div /> {/* Spacer */}
+            <div className={cn(
+              "flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[#ddfc7b] transition-all duration-300",
+              showSaved ? "opacity-100 translate-y-0" : "opacity-0 translate-y-1 pointer-events-none"
+            )}>
+              <Check className="size-3" />
+              Saved
+            </div>
+          </div>
           <div className="flex gap-6 items-center">
             <Popover>
               <PopoverTrigger asChild>
@@ -700,7 +736,68 @@ export default function AccountPage() {
 
       {/* Prompt Section */}
       <div className="mt-0">
-        <label className="text-xs font-bold text-[#dbdbdb]/60 uppercase tracking-tight mb-1 block">Account Prompt</label>
+        <div className="flex items-center justify-between mb-1">
+          <label className="text-xs font-bold text-[#dbdbdb]/60 uppercase tracking-tight block">Account Prompt</label>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={async () => {
+                if (!account.prompt || account.prompt.trim().length === 0) {
+                  toast.error('Please enter a prompt first')
+                  return
+                }
+                setEnhancingPrompt(true)
+                try {
+                  const response = await fetch('/api/enhance-prompt', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                      prompt: account.prompt,
+                    }),
+                  })
+
+                  const data = await response.json()
+
+                  if (!response.ok) {
+                    throw new Error(data.error || 'Failed to enhance prompt')
+                  }
+
+                  setAccount({ ...account, prompt: data.enhancedPrompt })
+                  await updateAccountField('prompt', data.enhancedPrompt)
+                  toast.success('Prompt enhanced successfully!')
+                } catch (error: any) {
+                  console.error('Error enhancing prompt:', error)
+                  toast.error(error.message || 'Failed to enhance prompt')
+                } finally {
+                  setEnhancingPrompt(false)
+                }
+              }}
+              disabled={enhancingPrompt || !account.prompt}
+              className={cn(
+                "size-6 flex items-center justify-center rounded-md bg-zinc-800 hover:bg-zinc-700 text-[#dbdbdb]/60 hover:text-[#ddfc7b] transition-all border border-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed relative",
+                !account.prompt && "border-yellow-500/50"
+              )}
+              title={!account.prompt ? "Enter text in the prompt field first" : "Enhance prompt with AI"}
+            >
+              {enhancingPrompt ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="size-3.5" />
+              )}
+              {!account.prompt && (
+                <span className="absolute -top-1 -right-1 size-2 bg-yellow-500 rounded-full" />
+              )}
+            </button>
+            <button
+              onClick={() => setShowPromptModal(true)}
+              className="size-6 flex items-center justify-center rounded-md bg-zinc-800 hover:bg-zinc-700 text-[#dbdbdb]/60 hover:text-[#dbdbdb] transition-all border border-zinc-700"
+              title="Expand to full view"
+            >
+              <Expand className="size-3.5" />
+            </button>
+          </div>
+        </div>
         <textarea
           className="text-sm leading-relaxed text-[#dbdbdb] bg-zinc-800/50 p-3 rounded-xl border border-zinc-700 w-full min-h-[100px] resize-none outline-none focus:ring-1 focus:ring-zinc-600 focus:bg-zinc-800 transition-all"
           value={account.prompt || ""}
@@ -863,6 +960,26 @@ export default function AccountPage() {
           }}
         />
       )}
+
+      {/* Prompt Modal */}
+      <Dialog open={showPromptModal} onOpenChange={setShowPromptModal}>
+        <DialogContent className="sm:max-w-[700px] rounded-2xl bg-zinc-800 border-zinc-700 max-h-[85vh] flex flex-col">
+          <DialogHeader className="pb-3">
+            <DialogTitle className="text-base font-bold tracking-tight text-[#dbdbdb]">
+              Account Prompt
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <textarea
+              className="text-sm leading-relaxed text-[#dbdbdb] bg-zinc-900/50 p-4 rounded-xl border border-zinc-700 w-full min-h-[400px] resize-none outline-none focus:ring-1 focus:ring-zinc-600 focus:bg-zinc-900 transition-all font-mono"
+              value={account.prompt || ""}
+              onChange={(e) => setAccount({ ...account, prompt: e.target.value })}
+              onBlur={(e) => updateAccountField('prompt', e.target.value)}
+              placeholder="Enter the AI prompt for this account..."
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
