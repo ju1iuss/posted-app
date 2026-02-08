@@ -87,8 +87,6 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
   const [formData, setFormData] = useState({
     name: "",
     username: "",
-    theme: "",
-    niche: "",
     prompt: "",
     notes: "",
     status: "planning" as "planning" | "active" | "paused" | "archived"
@@ -113,11 +111,9 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
           organization_id: organizationId,
           name: formData.name,
           username: formData.username || null,
-          theme: formData.theme || null,
-          niche: formData.niche || null,
           prompt: formData.prompt || null,
           notes: formData.notes || null,
-          status: formData.status,
+          status: "planning",
           template_id: selectedTemplateId,
           metadata: profilePicture ? { profile_picture: profilePicture } : {}
         })
@@ -133,8 +129,6 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
       setFormData({
         name: "",
         username: "",
-        theme: "",
-        niche: "",
         prompt: "",
         notes: "",
         status: "planning"
@@ -170,12 +164,19 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
     const university = UNIVERSITIES[Math.floor(Math.random() * UNIVERSITIES.length)]
     const city = CITIES[Math.floor(Math.random() * CITIES.length)]
     
-    // Random theme and niche
-    const theme = THEMES[Math.floor(Math.random() * THEMES.length)]
+    // Generate detailed AI prompt based on context
     const niche = NICHES[Math.floor(Math.random() * NICHES.length)]
+    const theme = THEMES[Math.floor(Math.random() * THEMES.length)]
     
-    // Random AI prompt
-    const prompt = AI_PROMPTS[Math.floor(Math.random() * AI_PROMPTS.length)]
+    const detailedPrompts = [
+      `Create engaging TikTok content focused on ${niche.toLowerCase()} with a ${theme.toLowerCase()} aesthetic. Keep content authentic, relatable, and visually appealing. Use trending formats like transitions, day-in-the-life moments, and educational snippets. Maintain consistent visual style with warm tones and aesthetic backgrounds.`,
+      `Generate ${niche.toLowerCase()} content that inspires and educates viewers. Use ${theme.toLowerCase()} visual style with curated backgrounds, soft lighting, and aesthetic compositions. Focus on trending formats like "POV", "Get Ready With Me", and "Day in My Life". Keep captions engaging and use popular hashtags.`,
+      `Create ${theme.toLowerCase()}-inspired content about ${niche.toLowerCase()}. Use aesthetic visuals, trending audio, and engaging storytelling. Focus on authentic moments, relatable experiences, and valuable insights. Maintain consistent color palette and visual identity throughout all posts.`,
+      `Generate motivational ${niche.toLowerCase()} content with ${theme.toLowerCase()} aesthetic. Use trending TikTok formats, aesthetic backgrounds, and engaging captions. Focus on personal growth, daily routines, and inspiring moments. Keep content authentic and visually cohesive.`,
+      `Create lifestyle content showcasing ${niche.toLowerCase()} through a ${theme.toLowerCase()} lens. Use aesthetic visuals, trending sounds, and relatable storytelling. Focus on day-in-the-life moments, routines, and personal experiences. Maintain consistent visual style and engaging narrative.`
+    ]
+    
+    const prompt = detailedPrompts[Math.floor(Math.random() * detailedPrompts.length)]
     
     // Generate bio
     const bio = `${university} | ${city.toLowerCase()}\n${age} years old`
@@ -184,8 +185,6 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
     setFormData({
       name: randomName,
       username: randomName.toLowerCase() + Math.floor(Math.random() * 1000),
-      theme: theme,
-      niche: niche,
       prompt: prompt,
       notes: bio,
       status: "planning"
@@ -273,46 +272,6 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
               </div>
             </div>
 
-            {/* Theme & Niche Row */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="theme" className="text-xs font-semibold text-[#dbdbdb]">Theme</Label>
-                <Input
-                  id="theme"
-                  placeholder="e.g., Dark Academia"
-                  value={formData.theme}
-                  onChange={(e) => updateField('theme', e.target.value)}
-                  className="h-9 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm focus:bg-zinc-800"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="niche" className="text-xs font-semibold text-[#dbdbdb]">Niche</Label>
-                <Input
-                  id="niche"
-                  placeholder="e.g., Self Improvement"
-                  value={formData.niche}
-                  onChange={(e) => updateField('niche', e.target.value)}
-                  className="h-9 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm focus:bg-zinc-800"
-                />
-              </div>
-            </div>
-
-            {/* Status */}
-            <div className="space-y-1.5">
-              <Label htmlFor="status" className="text-xs font-semibold text-[#dbdbdb]">Status</Label>
-              <Select value={formData.status} onValueChange={(val) => updateField('status', val)}>
-                <SelectTrigger className="h-9 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm focus:bg-zinc-800">
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent className="rounded-lg bg-zinc-800 border-zinc-700">
-                  <SelectItem value="planning" className="text-[#dbdbdb]">Planning</SelectItem>
-                  <SelectItem value="active" className="text-[#dbdbdb]">Active</SelectItem>
-                  <SelectItem value="paused" className="text-[#dbdbdb]">Paused</SelectItem>
-                  <SelectItem value="archived" className="text-[#dbdbdb]">Archived</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* AI Prompt */}
             <div className="space-y-1.5">
               <Label htmlFor="prompt" className="text-xs font-semibold flex items-center gap-1.5 text-[#dbdbdb]">
@@ -328,12 +287,12 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
               />
             </div>
 
-            {/* Notes */}
+            {/* Biography */}
             <div className="space-y-1.5">
-              <Label htmlFor="notes" className="text-xs font-semibold text-[#dbdbdb]">Notes</Label>
+              <Label htmlFor="notes" className="text-xs font-semibold text-[#dbdbdb]">Biography</Label>
               <Textarea
                 id="notes"
-                placeholder="Any additional notes about this account..."
+                placeholder="Add a biography for this account..."
                 value={formData.notes}
                 onChange={(e) => updateField('notes', e.target.value)}
                 className="min-h-[50px] rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] resize-none text-sm focus:bg-zinc-800"

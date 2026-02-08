@@ -184,7 +184,7 @@ function SortableAccountItem({
             !isSortable && "cursor-pointer"
           )}
         >
-          <Link href={url}>
+          <Link href={url} prefetch={true}>
             {item.metadata?.profile_picture ? (
               <div className="size-[14px] rounded-full overflow-hidden border border-zinc-700 flex-shrink-0">
                 <Image

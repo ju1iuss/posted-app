@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { X, Save, Download, Undo2, Redo2, Pencil, ZoomIn, ZoomOut } from 'lucide-react'
+import { X, Save, Undo2, Redo2, Pencil, ZoomIn, ZoomOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { DndContext } from '@dnd-kit/core'
 import { useEditorState } from './use-editor-state'
@@ -25,7 +25,6 @@ import { ASPECT_RATIOS } from './constants'
 import { EditorCanvas } from './editor-canvas'
 import { SlidePanel } from './slide-panel'
 import { LayerPanel } from './layer-panel'
-import { ExportDialog } from './export-dialog'
 import { TemplatePreview } from './template-preview'
 import {
   AlertDialog,
@@ -58,7 +57,6 @@ export function TemplateEditorModal({
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false)
-  const [showExportDialog, setShowExportDialog] = useState(false)
   const [isReadOnly, setIsReadOnly] = useState(true)
   const [canEdit, setCanEdit] = useState(false) // Whether this template can be edited at all
   const supabase = useMemo(() => createClient(), [])
@@ -454,18 +452,6 @@ export function TemplateEditorModal({
                 </Button>
               </div>
 
-              <div className="h-5 w-px bg-zinc-800" />
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowExportDialog(true)}
-                className="h-8 px-4 text-[11px] border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700 font-bold rounded-lg shadow-sm"
-              >
-                <Download className="size-3.5 mr-2" />
-                Export
-              </Button>
-              
               {isReadOnly && canEdit ? (
                 <Button
                   onClick={() => setIsReadOnly(false)}
@@ -635,16 +621,6 @@ export function TemplateEditorModal({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Export Dialog */}
-      {showExportDialog && (
-        <ExportDialog
-          open={showExportDialog}
-          onOpenChange={setShowExportDialog}
-          template={state.template}
-          slides={state.slides}
-          layers={state.layers}
-        />
-      )}
     </>
   )
 }

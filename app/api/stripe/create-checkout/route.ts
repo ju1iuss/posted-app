@@ -58,6 +58,10 @@ export async function POST(request: NextRequest) {
 
     const origin = request.headers.get('origin') || 'http://localhost:3000'
 
+    // Extract DataFast cookies for revenue attribution
+    const datafastVisitorId = request.cookies.get('datafast_visitor_id')?.value
+    const datafastSessionId = request.cookies.get('datafast_session_id')?.value
+
     // Add 1 EUR trial fee as pending invoice item (will be charged on first invoice)
     await stripe.invoiceItems.create({
       customer: customerId,
@@ -65,6 +69,17 @@ export async function POST(request: NextRequest) {
       currency: 'eur',
       description: 'Trial activation fee',
     })
+
+    // Build metadata object with DataFast attribution
+    const metadata: Record<string, string> = {
+      organization_id: organizationId,
+    }
+    if (datafastVisitorId) {
+      metadata.datafast_visitor_id = datafastVisitorId
+    }
+    if (datafastSessionId) {
+      metadata.datafast_session_id = datafastSessionId
+    }
 
     // Create checkout session with 3-day trial
     const session = await stripe.checkout.sessions.create({
@@ -85,9 +100,7 @@ export async function POST(request: NextRequest) {
       },
       success_url: `${origin}/success`,
       cancel_url: `${origin}/subscribe?canceled=true`,
-      metadata: {
-        organization_id: organizationId,
-      },
+      metadata,
       // Collect payment method upfront for trial
       payment_method_collection: 'always',
       // Enable coupon/promotion codes

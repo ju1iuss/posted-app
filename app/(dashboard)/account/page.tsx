@@ -15,6 +15,8 @@ export default function AccountPage() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [organizationId, setOrganizationId] = useState<string | null>(null)
   
   const [fullName, setFullName] = useState("")
   
@@ -36,6 +38,19 @@ export default function AccountPage() {
         setProfile(profile)
         setFullName(profile.full_name || "")
       }
+
+      // Get organization ID for upload path
+      const { data: orgMember } = await supabase
+        .from('organization_members')
+        .select('organization_id')
+        .eq('profile_id', user.id)
+        .limit(1)
+        .single()
+      
+      if (orgMember) {
+        setOrganizationId(orgMember.organization_id)
+      }
+
       setLoading(false)
     }
 
@@ -59,6 +74,71 @@ export default function AccountPage() {
       toast.error(error.message || "Failed to update profile")
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      setUploadingAvatar(true)
+      toast.loading('Uploading profile picture...', { id: 'avatar-upload' })
+
+      // Get organization ID or use 'public' as fallback
+      const orgId = organizationId || 'public'
+      const fileExt = file.name.split('.').pop()
+      const fileName = `avatar-${user.id}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `${orgId}/avatars/${fileName}`
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath)
+
+      // Update profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({
+          avatar_url: publicUrl,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', user.id)
+
+      if (updateError) throw updateError
+
+      // Update local state
+      setProfile({ ...profile, avatar_url: publicUrl })
+      toast.success('Profile picture uploaded successfully', { id: 'avatar-upload' })
+    } catch (error: any) {
+      console.error('Avatar upload error:', error)
+      toast.error(error.message || 'Failed to upload profile picture', { id: 'avatar-upload' })
+    } finally {
+      setUploadingAvatar(false)
+      // Reset input
+      e.target.value = ''
     }
   }
 
@@ -122,9 +202,20 @@ export default function AccountPage() {
                     {user?.email?.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <button className="absolute bottom-0 right-0 p-2 bg-[#ddfc7b] rounded-full text-black shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Camera className="size-4" />
-                </button>
+                <label className="absolute bottom-0 right-0 p-2 bg-[#ddfc7b] rounded-full text-black shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                  {uploadingAvatar ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Camera className="size-4" />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    disabled={uploadingAvatar}
+                    className="hidden"
+                  />
+                </label>
               </div>
               <div className="flex-1 w-full space-y-4">
                 <div className="grid gap-2">

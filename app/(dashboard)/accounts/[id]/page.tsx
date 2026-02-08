@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useTransition } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -98,12 +98,18 @@ export default function AccountPage() {
   const [showPromptModal, setShowPromptModal] = useState(false)
   const [enhancingPrompt, setEnhancingPrompt] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
+  const [uploadingProfilePic, setUploadingProfilePic] = useState(false)
+  const [isPending, startTransition] = useTransition()
   
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     async function loadAccountData() {
       if (!accountId) return
+
+      startTransition(() => {
+        setLoading(true)
+      })
 
       try {
         // Fetch account first with organization credits
@@ -331,6 +337,60 @@ export default function AccountPage() {
     }
   }
 
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !account) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file')
+      return
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image size must be less than 5MB')
+      return
+    }
+
+    try {
+      setUploadingProfilePic(true)
+      toast.loading('Uploading profile picture...', { id: 'profile-pic-upload' })
+
+      const orgId = account.organization_id || 'public'
+      const fileExt = file.name.split('.').pop()
+      const fileName = `profile-${accountId}-${Math.random().toString(36).substring(2)}.${fileExt}`
+      const filePath = `${orgId}/avatars/${fileName}`
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from('images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (uploadError) throw uploadError
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('images')
+        .getPublicUrl(filePath)
+
+      // Store the full URL for uploaded images (to distinguish from predefined images)
+      await updateAccountField('profile_picture', publicUrl)
+      
+      toast.success('Profile picture uploaded successfully', { id: 'profile-pic-upload' })
+    } catch (error: any) {
+      console.error('Profile picture upload error:', error)
+      toast.error(error.message || 'Failed to upload profile picture', { id: 'profile-pic-upload' })
+    } finally {
+      setUploadingProfilePic(false)
+      // Reset input
+      e.target.value = ''
+    }
+  }
+
   const formatViews = (views: number): string => {
     if (views >= 1000000) {
       return `${(views / 1000000).toFixed(1)}M`
@@ -491,7 +551,8 @@ export default function AccountPage() {
     }
   }
 
-  if (loading) {
+  // Only show full skeleton on initial load (no account data yet)
+  if (loading && !account) {
     return (
       <div className="min-h-screen bg-background pb-10">
         <div className="max-w-[600px] mx-auto px-4 pt-6">
@@ -527,7 +588,7 @@ export default function AccountPage() {
     )
   }
 
-  if (!account) {
+  if (!account && !loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-muted-foreground">Account not found</div>
@@ -537,7 +598,9 @@ export default function AccountPage() {
 
   // Get profile picture from metadata or use default
   const profilePic = account.metadata?.profile_picture 
-    ? `/profiles/${account.metadata.profile_picture}`
+    ? (account.metadata.profile_picture.startsWith('http') 
+        ? account.metadata.profile_picture 
+        : `/profiles/${account.metadata.profile_picture}`)
     : null
 
   const accountData = {
@@ -553,8 +616,18 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-10">
-      <div className="max-w-[600px] mx-auto px-4 pt-6">
+    <div className="min-h-screen bg-background pb-10 relative">
+      {/* Subtle loading indicator when switching accounts */}
+      {loading && account && (
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-zinc-800/90 backdrop-blur-sm rounded-lg border border-zinc-700 shadow-lg">
+          <Loader2 className="size-3.5 animate-spin text-[#ddfc7b]" />
+          <span className="text-[10px] font-bold text-[#dbdbdb]">Loading...</span>
+        </div>
+      )}
+      <div className={cn(
+        "max-w-[600px] mx-auto px-4 pt-6 transition-opacity duration-200",
+        loading && account && "opacity-60"
+      )}>
         {/* Profile Info Section */}
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center justify-between mb-2 h-6">
@@ -590,6 +663,28 @@ export default function AccountPage() {
               <PopoverContent className="w-64 p-3 rounded-2xl" align="start">
                 <div className="space-y-3">
                   <h4 className="text-sm font-bold">Select Profile Picture</h4>
+                  
+                  {/* Upload Option */}
+                  <label className="block">
+                    <div className="w-full aspect-square rounded-lg overflow-hidden border-2 border-dashed border-zinc-700 hover:border-[#ddfc7b] transition-all cursor-pointer flex flex-col items-center justify-center gap-2 bg-zinc-800/50 hover:bg-zinc-800">
+                      {uploadingProfilePic ? (
+                        <Loader2 className="size-5 animate-spin text-[#ddfc7b]" />
+                      ) : (
+                        <>
+                          <Camera className="size-5 text-[#ddfc7b]" />
+                          <span className="text-[10px] font-bold text-[#ddfc7b] uppercase">Upload</span>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleProfilePictureUpload}
+                      disabled={uploadingProfilePic}
+                      className="hidden"
+                    />
+                  </label>
+
                   <div className="grid grid-cols-4 gap-2">
                     {PROFILE_IMAGES.map((img) => (
                       <button

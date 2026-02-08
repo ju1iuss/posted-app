@@ -470,30 +470,54 @@ function TemplatesPageContent() {
                 </div>
 
                 {/* Action Button - Only visible on hover */}
-                {!template.is_premade && (
-                  <div className="absolute top-2.5 right-2.5 z-30">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button 
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-1.5 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100"
-                        >
-                          <MoreHorizontal className="size-3.5" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-32 rounded-xl bg-zinc-800 border-zinc-700">
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setAutoEditMode(true)
-                            setSelectedTemplateId(template.id)
-                            setShowEditorModal(true)
-                          }}
-                          className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
-                        >
-                          <Edit2 className="size-3" />
-                          Edit
-                        </DropdownMenuItem>
+                <div className="absolute top-2.5 right-2.5 z-30">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button 
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1.5 bg-black/20 hover:bg-black/40 backdrop-blur-md rounded-lg text-white opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100"
+                      >
+                        <MoreHorizontal className="size-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-32 rounded-xl bg-zinc-800 border-zinc-700">
+                      {!template.is_premade && (
+                        <>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setAutoEditMode(true)
+                              setSelectedTemplateId(template.id)
+                              setShowEditorModal(true)
+                            }}
+                            className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
+                          >
+                            <Edit2 className="size-3" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDuplicateTemplate(template)
+                            }}
+                            className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700"
+                          >
+                            <Copy className="size-3" />
+                            Duplicate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setDeleteTemplateId(template.id)
+                            }}
+                            className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-red-900/20"
+                          >
+                            <Trash2 className="size-3" />
+                            Delete
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      {template.is_premade && (
                         <DropdownMenuItem 
                           onClick={(e) => {
                             e.stopPropagation()
@@ -504,20 +528,10 @@ function TemplatesPageContent() {
                           <Copy className="size-3" />
                           Duplicate
                         </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setDeleteTemplateId(template.id)
-                          }}
-                          className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-red-900/20"
-                        >
-                          <Trash2 className="size-3" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                )}
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
             ))}
 
