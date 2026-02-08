@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { Check, Zap, Loader2, ArrowRight, Shield, Users, Sparkles, Lock, Key, AlertCircle, ArrowLeft } from "lucide-react"
+import { Check, Zap, Loader2, ArrowRight, Shield, Users, Sparkles, Lock, Key, AlertCircle, ArrowLeft, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,6 +32,7 @@ export default function SubscribePage() {
   
   const searchParams = useSearchParams()
   const canceled = searchParams.get('canceled')
+  const router = useRouter()
   
   const supabase = useMemo(() => createClient(), [])
 
@@ -73,6 +74,11 @@ export default function SubscribePage() {
     }
   }
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
   const handleStartTrial = async () => {
     if (!currentOrg) return
     
@@ -110,13 +116,23 @@ export default function SubscribePage() {
   if (!isUnlocked) {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-4">
-        <Link 
-          href="https://posted.dev"
-          className="mb-8 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest"
-        >
-          <ArrowLeft className="size-3" />
-          Back to Homepage
-        </Link>
+        <div className="mb-8 flex items-center gap-4">
+          <Link 
+            href="https://posted.dev"
+            className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest"
+          >
+            <ArrowLeft className="size-3" />
+            Back to Homepage
+          </Link>
+          <Button
+            onClick={handleSignOut}
+            variant="ghost"
+            className="flex items-center gap-2 text-zinc-500 hover:text-red-400 transition-colors text-[10px] font-black uppercase tracking-widest"
+          >
+            <LogOut className="size-3" />
+            Logout
+          </Button>
+        </div>
         <div className="max-w-sm w-full space-y-8 text-center">
           <div className="flex justify-center">
             <div className="size-16 rounded-2xl bg-zinc-800 flex items-center justify-center border border-zinc-700 shadow-2xl">
@@ -155,13 +171,23 @@ export default function SubscribePage() {
 
   return (
     <div className="min-h-[80vh] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-500">
-      <Link 
-        href="https://posted.dev"
-        className="mb-8 flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest"
-      >
-        <ArrowLeft className="size-3" />
-        Back to Homepage
-      </Link>
+      <div className="mb-8 flex items-center gap-4">
+        <Link 
+          href="https://posted.dev"
+          className="flex items-center gap-2 text-zinc-500 hover:text-white transition-colors text-[10px] font-black uppercase tracking-widest"
+        >
+          <ArrowLeft className="size-3" />
+          Back to Homepage
+        </Link>
+        <Button
+          onClick={handleSignOut}
+          variant="ghost"
+          className="flex items-center gap-2 text-zinc-500 hover:text-red-400 transition-colors text-[10px] font-black uppercase tracking-widest"
+        >
+          <LogOut className="size-3" />
+          Logout
+        </Button>
+      </div>
       <div className="max-w-lg w-full space-y-8">
         {/* Header */}
         <div className="text-center space-y-4">

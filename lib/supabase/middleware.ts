@@ -57,6 +57,12 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/auth')
+  const isWebhook = request.nextUrl.pathname.startsWith('/api/stripe/webhook')
+
+  // Skip auth check for webhook routes (Stripe sends these without cookies)
+  if (isWebhook) {
+    return response
+  }
 
   // Redirect to login if no user and not on auth pages
   if (!user && !isAuthPage) {
