@@ -269,9 +269,36 @@ export async function POST(request: NextRequest) {
     })
 
     // Build AI prompt - prefer client-provided prompt (most up-to-date), fall back to DB
-    const accountPrompt = clientPrompt || account.prompt || 'Create engaging social media content.'
+    const accountPrompt = clientPrompt || account.prompt || ''
+    const hasPrompt = accountPrompt && accountPrompt.trim().length > 0
     
-    const systemPrompt = `You are generating text for social media posts. Fill in text layers for a ${template.type} template based on the user's content direction.
+    // Build mapping from simple IDs back to real UUIDs (needed for matching AI response)
+    const slideIdMap = new Map<string, string>() // simple_id -> real UUID
+    const layerIdMap = new Map<string, string>() // simple_id -> real UUID
+    const slidesWithText: { slide: typeof slides[0], simpleId: string, layers: { layer: typeof layers extends (infer T)[] ? T : never, simpleId: string }[] }[] = []
+    
+    // Build slidesWithText structure (used for both AI prompt and matching)
+    slides.forEach((slide, idx) => {
+      const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
+      if (slideLayers.length > 0) {
+        const simpleSlideId = `slide_${idx + 1}`
+        const simpleLayers = slideLayers.map((layer, layerIdx) => ({
+          layer,
+          simpleId: `layer_${idx + 1}_${layerIdx + 1}`
+        }))
+        slidesWithText.push({ slide, simpleId: simpleSlideId, layers: simpleLayers })
+        slideIdMap.set(simpleSlideId, slide.id)
+        simpleLayers.forEach(({ layer, simpleId: layerSimpleId }) => {
+          layerIdMap.set(layerSimpleId, layer.id)
+        })
+      }
+    })
+    
+    let generatedContent: PostContent | null = null
+
+    // Only call AI if there's a prompt, otherwise use default text from template
+    if (hasPrompt) {
+      const systemPrompt = `You are generating text for social media posts. Fill in text layers for a ${template.type} template based on the user's content direction.
 
 IMPORTANT RULES:
 1. Text content for images (text_content fields): NO hashtags allowed, use simple, natural language
@@ -282,119 +309,105 @@ Use simple language. Avoid marketing speak, excessive exclamation marks, or phra
 
 Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the JSON object.`
 
-    let promptText = `Content direction: ${accountPrompt}\n\n`
-    promptText += `Template: ${template.name}\n\n`
-    promptText += `This template has ${slides.length} slide(s). Each slide contains text layers that need to be filled:\n\n`
-
-    // Use simple IDs for the AI prompt to avoid UUID mangling, then map back
-    const slidesWithText: { slide: typeof slides[0], simpleId: string, layers: { layer: typeof layers extends (infer T)[] ? T : never, simpleId: string }[] }[] = []
-    
-    slides.forEach((slide, idx) => {
-      const slideLayers = (textLayersBySlide[slide.id] || []).filter(l => !l.is_fixed)
-      if (slideLayers.length > 0) {
-        const simpleSlideId = `slide_${idx + 1}`
-        const simpleLayers = slideLayers.map((layer, layerIdx) => ({
-          layer,
-          simpleId: `layer_${idx + 1}_${layerIdx + 1}`
-        }))
-        slidesWithText.push({ slide, simpleId: simpleSlideId, layers: simpleLayers })
+      let promptText = `Content direction: ${accountPrompt}\n\n`
+      promptText += `Template: ${template.name}\n\n`
+      promptText += `This template has ${slides.length} slide(s). Each slide contains text layers that need to be filled:\n\n`
+      
+      slidesWithText.forEach(({ simpleId: slideId, layers: simpleLayers }, idx) => {
         promptText += `Slide ${idx + 1}:\n`
         simpleLayers.forEach(({ layer, simpleId }) => {
           const placeholder = layer.text_content || `Text`
           promptText += `  - "${simpleId}": currently says "${placeholder}" - rewrite this\n`
         })
         promptText += '\n'
-      }
-    })
-
-    promptText += `\nReturn ONLY valid JSON in this exact format:\n`
-    promptText += `{\n`
-    promptText += `  "title": "Simple title here (no hashtags, max 8 words)",\n`
-    promptText += `  "caption": "Natural caption text here #hashtag1 #hashtag2",\n`
-    promptText += `  "slides": [\n`
-    slidesWithText.forEach(({ simpleId: slideId, layers: simpleLayers }, idx) => {
-      promptText += `    {\n`
-      promptText += `      "slide_id": "${slideId}",\n`
-      promptText += `      "layers": [\n`
-      simpleLayers.forEach(({ simpleId }, layerIdx) => {
-        promptText += `        {\n`
-        promptText += `          "layer_id": "${simpleId}",\n`
-        promptText += `          "text_content": "your generated text here (NO HASHTAGS)"\n`
-        promptText += `        }${layerIdx < simpleLayers.length - 1 ? ',' : ''}\n`
       })
-      promptText += `      ]\n`
-      promptText += `    }${idx < slidesWithText.length - 1 ? ',' : ''}\n`
-    })
-    promptText += `  ]\n`
-    promptText += `}\n\n`
-    promptText += `IMPORTANT: Use the EXACT slide_id and layer_id values shown above. Do NOT change them. text_content must NOT contain any hashtags. Title should be short and simple (max 8 words), written naturally. Caption should be casual and conversational with max 2 hashtags at the end. Avoid marketing speak, excessive enthusiasm, or AI-sounding phrases. Write like a real person.`
-    
-    // Build mapping from simple IDs back to real UUIDs
-    const slideIdMap = new Map<string, string>() // simple_id -> real UUID
-    const layerIdMap = new Map<string, string>() // simple_id -> real UUID
-    slidesWithText.forEach(({ slide, simpleId, layers: simpleLayers }) => {
-      slideIdMap.set(simpleId, slide.id)
-      simpleLayers.forEach(({ layer, simpleId: layerSimpleId }) => {
-        layerIdMap.set(layerSimpleId, layer.id)
+
+      promptText += `\nReturn ONLY valid JSON in this exact format:\n`
+      promptText += `{\n`
+      promptText += `  "title": "Simple title here (no hashtags, max 8 words)",\n`
+      promptText += `  "caption": "Natural caption text here #hashtag1 #hashtag2",\n`
+      promptText += `  "slides": [\n`
+      slidesWithText.forEach(({ simpleId: slideId, layers: simpleLayers }, idx) => {
+        promptText += `    {\n`
+        promptText += `      "slide_id": "${slideId}",\n`
+        promptText += `      "layers": [\n`
+        simpleLayers.forEach(({ simpleId }, layerIdx) => {
+          promptText += `        {\n`
+          promptText += `          "layer_id": "${simpleId}",\n`
+          promptText += `          "text_content": "your generated text here (NO HASHTAGS)"\n`
+          promptText += `        }${layerIdx < simpleLayers.length - 1 ? ',' : ''}\n`
+        })
+        promptText += `      ]\n`
+        promptText += `    }${idx < slidesWithText.length - 1 ? ',' : ''}\n`
       })
-    })
+      promptText += `  ]\n`
+      promptText += `}\n\n`
+      promptText += `IMPORTANT: Use the EXACT slide_id and layer_id values shown above. Do NOT change them. text_content must NOT contain any hashtags. Title should be short and simple (max 8 words), written naturally. Caption should be casual and conversational with max 2 hashtags at the end. Avoid marketing speak, excessive enthusiasm, or AI-sounding phrases. Write like a real person.`
 
-    // Call fal.ai OpenRouter
-    const falKey = process.env.FAL_KEY
-    if (!falKey) {
-      return NextResponse.json(
-        { error: 'FAL_KEY not configured' },
-        { status: 500 }
-      )
-    }
-
-    const falResponse = await fetch('https://fal.run/openrouter/router', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Key ${falKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: promptText,
-        system_prompt: systemPrompt,
-        model: 'google/gemini-2.5-flash',
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
-    })
-
-    if (!falResponse.ok) {
-      const errorText = await falResponse.text()
-      console.error('fal.ai error:', errorText)
-      return NextResponse.json(
-        { error: 'Failed to generate content', details: errorText },
-        { status: 500 }
-      )
-    }
-
-    const falData = await falResponse.json()
-    let generatedContent: PostContent
-
-    // Parse the response - handle both direct JSON and text-wrapped JSON
-    try {
-      let jsonText = falData.output || falData.text || JSON.stringify(falData)
-      
-      // Remove markdown code blocks if present
-      jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-      
-      // Try to extract JSON if wrapped in text
-      const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        jsonText = jsonMatch[0]
+      // Call fal.ai OpenRouter
+      const falKey = process.env.FAL_KEY
+      if (!falKey) {
+        return NextResponse.json(
+          { error: 'FAL_KEY not configured' },
+          { status: 500 }
+        )
       }
 
-      generatedContent = JSON.parse(jsonText)
-    } catch (parseError) {
-      console.error('Failed to parse AI response:', falData)
-      return NextResponse.json(
-        { error: 'Failed to parse AI response', details: falData },
-        { status: 500 }
-      )
+      const falResponse = await fetch('https://fal.run/openrouter/router', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Key ${falKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: promptText,
+          system_prompt: systemPrompt,
+          model: 'google/gemini-2.5-flash',
+          temperature: 0.7,
+          max_tokens: 2000,
+        }),
+      })
+
+      if (!falResponse.ok) {
+        const errorText = await falResponse.text()
+        console.error('fal.ai error:', errorText)
+        return NextResponse.json(
+          { error: 'Failed to generate content', details: errorText },
+          { status: 500 }
+        )
+      }
+
+      const falData = await falResponse.json()
+
+      // Parse the response - handle both direct JSON and text-wrapped JSON
+      try {
+        let jsonText = falData.output || falData.text || JSON.stringify(falData)
+        
+        // Remove markdown code blocks if present
+        jsonText = jsonText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+        
+        // Try to extract JSON if wrapped in text
+        const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          jsonText = jsonMatch[0]
+        }
+
+        generatedContent = JSON.parse(jsonText)
+      } catch (parseError) {
+        console.error('Failed to parse AI response:', falData)
+        return NextResponse.json(
+          { error: 'Failed to parse AI response', details: falData },
+          { status: 500 }
+        )
+      }
+    } else {
+      // No prompt - use default text from template, empty title and caption
+      generatedContent = {
+        template_id: templateId,
+        title: '',
+        caption: '',
+        slides: []
+      }
     }
 
     // Build complete post content with image URLs
@@ -425,41 +438,43 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
       console.log('[generate-post] Slide', slide.id, 'has', slideLayers.length, 'layers')
       
       const contentLayers = slideLayers.map(layer => {
-        // Find AI-generated content - try both simple ID mapping and direct UUID matching
+        // Find AI-generated content - only if we have a prompt and generated content
         let generatedLayer: any = null
         
-        // First: try matching via simple IDs (most reliable)
-        for (const genSlide of (generatedContent.slides || [])) {
-          // Check if this genSlide maps to our current slide via simple ID
-          const realSlideId = slideIdMap.get(genSlide.slide_id)
-          if (realSlideId === slide.id) {
-            for (const genLayer of (genSlide.layers || [])) {
-              const realLayerId = layerIdMap.get(genLayer.layer_id)
-              if (realLayerId === layer.id) {
-                generatedLayer = genLayer
-                break
+        if (hasPrompt && generatedContent?.slides) {
+          // First: try matching via simple IDs (most reliable)
+          for (const genSlide of (generatedContent.slides || [])) {
+            // Check if this genSlide maps to our current slide via simple ID
+            const realSlideId = slideIdMap.get(genSlide.slide_id)
+            if (realSlideId === slide.id) {
+              for (const genLayer of (genSlide.layers || [])) {
+                const realLayerId = layerIdMap.get(genLayer.layer_id)
+                if (realLayerId === layer.id) {
+                  generatedLayer = genLayer
+                  break
+                }
               }
+              break
             }
-            break
           }
-        }
-        
-        // Fallback: try direct UUID matching (in case AI returned UUIDs correctly)
-        if (!generatedLayer) {
-          generatedLayer = generatedContent.slides
-            ?.find(s => s.slide_id === slide.id)
-            ?.layers?.find(l => l.layer_id === layer.id) || null
-        }
+          
+          // Fallback: try direct UUID matching (in case AI returned UUIDs correctly)
+          if (!generatedLayer) {
+            generatedLayer = generatedContent.slides
+              ?.find(s => s.slide_id === slide.id)
+              ?.layers?.find(l => l.layer_id === layer.id) || null
+          }
 
-        // Fallback: positional matching as last resort
-        if (!generatedLayer && layer.type === 'text' && !layer.is_fixed) {
-          const slideEntry = slidesWithText.find(s => s.slide.id === slide.id)
-          if (slideEntry) {
-            const slideIdx = slidesWithText.indexOf(slideEntry)
-            const layerIdx = slideEntry.layers.findIndex(l => l.layer.id === layer.id)
-            if (slideIdx >= 0 && layerIdx >= 0 && generatedContent.slides?.[slideIdx]?.layers?.[layerIdx]) {
-              generatedLayer = generatedContent.slides[slideIdx].layers[layerIdx]
-              console.log('[generate-post] Text layer', layer.id, 'matched by POSITION (slide', slideIdx, 'layer', layerIdx, ')')
+          // Fallback: positional matching as last resort
+          if (!generatedLayer && layer.type === 'text' && !layer.is_fixed) {
+            const slideEntry = slidesWithText.find(s => s.slide.id === slide.id)
+            if (slideEntry) {
+              const slideIdx = slidesWithText.indexOf(slideEntry)
+              const layerIdx = slideEntry.layers.findIndex(l => l.layer.id === layer.id)
+              if (slideIdx >= 0 && layerIdx >= 0 && generatedContent.slides?.[slideIdx]?.layers?.[layerIdx]) {
+                generatedLayer = generatedContent.slides[slideIdx].layers[layerIdx]
+                console.log('[generate-post] Text layer', layer.id, 'matched by POSITION (slide', slideIdx, 'layer', layerIdx, ')')
+              }
             }
           }
         }
@@ -473,12 +488,13 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
           if (layer.is_fixed) {
             layerData.text_content = layer.text_content
             console.log('[generate-post] Text layer', layer.id, 'is FIXED, using original content')
-          } else if (generatedLayer?.text_content) {
+          } else if (hasPrompt && generatedLayer?.text_content) {
             layerData.text_content = generatedLayer.text_content
             console.log('[generate-post] Text layer', layer.id, 'MATCHED, content:', layerData.text_content?.substring(0, 50))
           } else {
-            layerData.text_content = layer.text_content
-            console.log('[generate-post] Text layer', layer.id, 'NO AI CONTENT FOUND, using original. AI response slides:', JSON.stringify(generatedContent.slides?.map(s => s.slide_id)))
+            // No prompt or no AI content - use default text from template
+            layerData.text_content = layer.text_content || ''
+            console.log('[generate-post] Text layer', layer.id, hasPrompt ? 'NO AI CONTENT FOUND, using original' : 'NO PROMPT, using default text')
           }
         }
 
@@ -511,8 +527,8 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
     // Validate and structure the content
     const postContent: PostContent = {
       template_id: templateId,
-      title: generatedContent.title || '',
-      caption: generatedContent.caption || '',
+      title: hasPrompt ? (generatedContent?.title || '') : '',
+      caption: hasPrompt ? (generatedContent?.caption || '') : '',
       slides: postContentSlides
     }
 
@@ -524,8 +540,8 @@ Return ONLY valid JSON - no markdown, no code blocks, no explanations, just the 
       .insert({
         account_id: accountId,
         type: template.type,
-        title: generatedContent.title || null,
-        caption: generatedContent.caption || null,
+        title: generatedContent?.title || null,
+        caption: generatedContent?.caption || null,
         content: postContent,
         status: 'ready',
       })

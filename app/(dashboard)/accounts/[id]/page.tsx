@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { 
@@ -22,7 +22,8 @@ import {
   Wand2,
   Loader2,
   Check,
-  CheckCircle2
+  CheckCircle2,
+  Trash2
 } from "lucide-react"
 import Image from "next/image"
 import { 
@@ -82,6 +83,7 @@ const PROFILE_IMAGES = [
 
 export default function AccountPage() {
   const params = useParams()
+  const router = useRouter()
   const accountId = params.id as string
   const [activeTab, setActiveTab] = useState<"videos" | "liked" | "private">("videos")
   const [account, setAccount] = useState<any>(null)
@@ -101,6 +103,8 @@ export default function AccountPage() {
   const [enhancingPrompt, setEnhancingPrompt] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false)
+  const [showDeleteAccountDialog, setShowDeleteAccountDialog] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
   
   const supabase = useMemo(() => createClient(), [])
 
@@ -389,13 +393,10 @@ export default function AccountPage() {
       return
     }
 
-    if (!account.prompt) {
-      toast.error('Please add an account prompt first')
-      return
+    // Ensure the latest prompt is saved to the database before generating (even if empty)
+    if (account.prompt !== undefined) {
+      await updateAccountField('prompt', account.prompt || '')
     }
-
-    // Ensure the latest prompt is saved to the database before generating
-    await updateAccountField('prompt', account.prompt)
 
     const tempId = `pending-${Date.now()}`
     setPendingPostId(tempId)
@@ -709,8 +710,13 @@ export default function AccountPage() {
               }
               <ChevronDown className="size-4" />
             </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9 border border-zinc-700 rounded-md">
-              <Plus className="size-4" />
+            <Button 
+              variant="outline" 
+              size="icon" 
+              className="h-9 w-9 border border-zinc-700 rounded-md hover:bg-red-600/10 hover:border-red-600/50 hover:text-red-500 transition-colors"
+              onClick={() => setShowDeleteAccountDialog(true)}
+            >
+              <Trash2 className="size-4" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1035,7 +1041,7 @@ export default function AccountPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Post Confirmation Modal */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-[#171717] border-zinc-700">
           <AlertDialogHeader>
@@ -1072,6 +1078,52 @@ export default function AccountPage() {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Account Confirmation Modal */}
+      <AlertDialog open={showDeleteAccountDialog} onOpenChange={setShowDeleteAccountDialog}>
+        <AlertDialogContent className="bg-[#171717] border-zinc-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#dbdbdb]">Delete Account</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#dbdbdb]/80">
+              Are you sure you want to delete this account? This will permanently delete the account and all associated posts. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700"
+              disabled={deletingAccount}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                if (!accountId) return
+                
+                setDeletingAccount(true)
+                try {
+                  const { error } = await supabase
+                    .from('accounts')
+                    .delete()
+                    .eq('id', accountId)
+
+                  if (error) throw error
+
+                  toast.success('Account deleted successfully')
+                  router.push('/dashboard')
+                } catch (error: any) {
+                  console.error('Error deleting account:', error)
+                  toast.error(error.message || 'Failed to delete account')
+                  setDeletingAccount(false)
+                }
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+              disabled={deletingAccount}
+            >
+              {deletingAccount ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -116,7 +116,7 @@ export function CreateAccountModal({ organizationId, brands = [], onAccountCreat
           username: formData.username || null,
           prompt: formData.prompt || null,
           notes: formData.notes || null,
-          status: "planning",
+          status: formData.status,
           template_id: selectedTemplateId,
           metadata: profilePicture ? { profile_picture: profilePicture } : {}
         })
@@ -298,6 +298,23 @@ export function CreateAccountModal({ organizationId, brands = [], onAccountCreat
                 </Select>
               </div>
             )}
+
+            {/* Status Selection */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-[#dbdbdb]">Status</Label>
+              <Select value={formData.status} onValueChange={(v) => updateField('status', v)}>
+                <SelectTrigger className="h-9 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-900 border-zinc-700">
+                  <SelectItem value="planning" className="text-[#dbdbdb]">Planning</SelectItem>
+                  <SelectItem value="warming_up" className="text-[#dbdbdb]">Warming Up</SelectItem>
+                  <SelectItem value="active" className="text-[#dbdbdb]">Active</SelectItem>
+                  <SelectItem value="not_active" className="text-[#dbdbdb]">Not Active</SelectItem>
+                  <SelectItem value="paused" className="text-[#dbdbdb]">Paused</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* AI Prompt */}
             <div className="space-y-1.5">

@@ -16,11 +16,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invite code is required' }, { status: 400 })
     }
 
-    // Find organization by invite code (slug for now)
+    // Find organization by invite code
     const { data: org, error: orgError } = await supabase
       .from('organizations')
       .select('id, name, max_seats, subscription_status')
-      .eq('slug', inviteCode)
+      .eq('invite_code', inviteCode)
       .single()
 
     if (orgError || !org) {

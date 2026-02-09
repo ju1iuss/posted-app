@@ -40,7 +40,10 @@ import {
   ArrowLeft,
   Folder,
   FolderOpen,
-  X
+  X,
+  MoreVertical,
+  Copy,
+  Trash2
 } from "lucide-react"
 import {
   Sidebar,
@@ -89,6 +92,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Slider } from "@/components/ui/slider"
 import { toast } from "sonner"
 import { Label } from "@/components/ui/label"
@@ -189,7 +202,10 @@ function SortableAccountItem({
   indented = false,
   isDraggingRef,
   isOver,
-  dropPosition
+  dropPosition,
+  onDelete,
+  onDuplicate,
+  onStatusChange
 }: { 
   item: any, 
   isActive: boolean, 
@@ -197,7 +213,10 @@ function SortableAccountItem({
   indented?: boolean,
   isDraggingRef: React.RefObject<boolean>,
   isOver?: boolean,
-  dropPosition?: 'above' | 'below' | 'inside' | null
+  dropPosition?: 'above' | 'below' | 'inside' | null,
+  onDelete?: (accountId: string) => void,
+  onDuplicate?: (accountId: string) => void,
+  onStatusChange?: (accountId: string, status: string) => void
 }) {
   const {
     attributes,
@@ -211,6 +230,9 @@ function SortableAccountItem({
     disabled: !isSortable
   })
 
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showStatusMenu, setShowStatusMenu] = useState(false)
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -221,39 +243,151 @@ function SortableAccountItem({
 
   const url = `/accounts/${item.id}`
 
+  const statusOptions = [
+    { value: 'planning', label: 'Planning', dot: 'bg-zinc-500' },
+    { value: 'warming_up', label: 'Warming Up', dot: 'bg-yellow-500' },
+    { value: 'active', label: 'Active', dot: 'bg-green-500' },
+    { value: 'not_active', label: 'Not Active', dot: 'bg-zinc-500' },
+    { value: 'paused', label: 'Paused', dot: 'bg-red-500' },
+  ]
+
   return (
-    <div ref={setNodeRef} style={style} className={cn("relative group/item", indented && "pl-3")}>
-      <SidebarMenuItem className="list-none">
-        <SidebarMenuButton 
-          asChild
-          isActive={isActive}
-          tooltip={item.username || item.name}
-          className={cn(
-            "h-8 px-2 rounded-md transition-all duration-300 hover:bg-zinc-800 active:scale-[0.98] data-[active=true]:bg-zinc-800/80 data-[active=true]:text-[#dbdbdb] data-[active=true]:shadow-sm data-[active=true]:before:opacity-0",
-            isSortable && "cursor-grab active:cursor-grabbing",
-            !isSortable && "cursor-pointer"
-          )}
-        >
-          <Link 
-            href={url} 
-            prefetch={true}
-            {...attributes}
-            {...listeners}
-            onClick={(e) => {
-              if (isDraggingRef.current) {
-                e.preventDefault();
-                e.stopPropagation();
-              }
-            }}
-          >
-            <StatusDot status={item.status || 'planning'} />
-            <span className="font-bold tracking-tight text-[11px] text-[#dbdbdb]">
-              {item.username || item.name}
-            </span>
-          </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-    </div>
+    <>
+      <div ref={setNodeRef} style={style} className={cn("relative group/item", indented && "pl-3")}>
+        <SidebarMenuItem className="list-none">
+          <div className="flex items-center gap-1 group-hover/item:bg-zinc-800/50 rounded-md transition-colors">
+            <SidebarMenuButton 
+              asChild
+              isActive={isActive}
+              tooltip={item.username || item.name}
+              className={cn(
+                "h-8 px-2 rounded-md transition-all duration-300 hover:bg-transparent active:scale-[0.98] data-[active=true]:bg-transparent data-[active=true]:text-[#dbdbdb] data-[active=true]:shadow-sm data-[active=true]:before:opacity-0 flex-1",
+                isSortable && "cursor-grab active:cursor-grabbing",
+                !isSortable && "cursor-pointer"
+              )}
+            >
+              <Link 
+                href={url} 
+                prefetch={true}
+                {...attributes}
+                {...listeners}
+                onClick={(e) => {
+                  if (isDraggingRef.current) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }
+                }}
+              >
+                <StatusDot status={item.status || 'planning'} />
+                <span className="font-bold tracking-tight text-[11px] text-[#dbdbdb]">
+                  {item.username || item.name}
+                </span>
+              </Link>
+            </SidebarMenuButton>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                  className="opacity-0 group-hover/item:opacity-100 h-8 w-6 flex items-center justify-center rounded-md hover:bg-zinc-700 transition-all mr-1"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                  }}
+                >
+                  <MoreVertical className="size-3.5 text-[#dbdbdb]/60" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700">
+                <DropdownMenuLabel className="text-[10px] font-bold text-[#dbdbdb]/60 uppercase px-2 py-1.5">
+                  Status
+                </DropdownMenuLabel>
+                {statusOptions.map((s) => (
+                  <DropdownMenuItem 
+                    key={s.value}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onStatusChange?.(item.id, s.value)
+                      setShowStatusMenu(false)
+                    }}
+                    className={cn(
+                      "text-[11px] font-bold gap-2 px-2 py-1.5",
+                      "focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none",
+                      "hover:bg-zinc-700 hover:text-[#dbdbdb]",
+                      item.status === s.value 
+                        ? 'text-[#ddfc7b] focus:text-[#ddfc7b] focus:bg-zinc-700 hover:text-[#ddfc7b]' 
+                        : 'text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700'
+                    )}
+                  >
+                    <div className={cn("size-2 rounded-full", s.dot)} />
+                    {s.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator className="bg-zinc-700 my-1" />
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onDuplicate?.(item.id)
+                  }}
+                  className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
+                >
+                  <Copy className="size-3" />
+                  <span>Duplicate</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    setShowDeleteDialog(true)
+                  }}
+                  className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-red-500 cursor-pointer flex items-center gap-2 text-red-500/60 hover:text-red-500"
+                >
+                  <Trash2 className="size-3" />
+                  <span>Delete</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </SidebarMenuItem>
+      </div>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="bg-[#171717] border-zinc-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#dbdbdb]">Delete Account</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#dbdbdb]/80">
+              Are you sure you want to delete "{item.username || item.name}"? This will permanently delete the account and all associated posts. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onDelete?.(item.id)
+                setShowDeleteDialog(false)
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
@@ -839,6 +973,85 @@ export function AppSidebar() {
     loadAccountsAndBrands()
   }, [currentOrgId, supabase])
 
+  const handleDeleteAccount = async (accountId: string) => {
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .delete()
+        .eq('id', accountId)
+
+      if (error) throw error
+
+      setAccounts(prev => prev.filter(a => a.id !== accountId))
+      toast.success('Account deleted successfully')
+      
+      // If we're on the deleted account's page, redirect to dashboard
+      if (pathname?.startsWith(`/accounts/${accountId}`)) {
+        router.push('/dashboard')
+      }
+    } catch (error: any) {
+      console.error('Error deleting account:', error)
+      toast.error(error.message || 'Failed to delete account')
+    }
+  }
+
+  const handleDuplicateAccount = async (accountId: string) => {
+    try {
+      const account = accounts.find(a => a.id === accountId)
+      if (!account) {
+        toast.error('Account not found')
+        return
+      }
+
+      const { data: newAccount, error } = await supabase
+        .from('accounts')
+        .insert({
+          organization_id: account.organization_id,
+          brand_id: account.brand_id,
+          name: `${account.name} (Copy)`,
+          username: account.username ? `${account.username}_copy` : null,
+          prompt: account.prompt,
+          notes: account.notes,
+          status: account.status || 'planning',
+          template_id: account.template_id,
+          metadata: account.metadata || {}
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setAccounts(prev => [...prev, newAccount])
+      toast.success('Account duplicated successfully')
+    } catch (error: any) {
+      console.error('Error duplicating account:', error)
+      toast.error(error.message || 'Failed to duplicate account')
+    }
+  }
+
+  const handleStatusChange = async (accountId: string, status: string) => {
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({ status })
+        .eq('id', accountId)
+
+      if (error) throw error
+
+      setAccounts(prev => prev.map(a => 
+        a.id === accountId ? { ...a, status } : a
+      ))
+      
+      // Dispatch event for other components to update
+      window.dispatchEvent(new CustomEvent('account-updated', {
+        detail: { id: accountId, status }
+      }))
+    } catch (error: any) {
+      console.error('Error updating account status:', error)
+      toast.error(error.message || 'Failed to update status')
+    }
+  }
+
   useEffect(() => {
     async function loadSidebarData() {
       const { data: { user } } = await supabase.auth.getUser()
@@ -1321,6 +1534,9 @@ export function AppSidebar() {
                             isDraggingRef={isDraggingRef}
                             isOver={overId === sortId}
                             dropPosition={overId === sortId ? dropPosition : null}
+                            onDelete={handleDeleteAccount}
+                            onDuplicate={handleDuplicateAccount}
+                            onStatusChange={handleStatusChange}
                           />
                         )
                       }
