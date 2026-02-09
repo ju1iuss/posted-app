@@ -28,17 +28,19 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
         return
       }
 
-      // Get user's current organization and its subscription status
-      const { data: orgMember } = await supabase
+      // Get ALL user's organizations and check if any has an active subscription
+      const { data: orgMembers } = await supabase
         .from('organization_members')
         .select('organizations(subscription_status)')
         .eq('profile_id', user.id)
-        .limit(1)
-        .single()
 
-      if (orgMember) {
-        const org = orgMember.organizations as any
-        setSubscriptionStatus(org?.subscription_status || 'none')
+      if (orgMembers && orgMembers.length > 0) {
+        // Check if any org has active or trialing subscription
+        const hasAnyActiveOrg = orgMembers.some(member => {
+          const org = member.organizations as any
+          return org?.subscription_status === 'active' || org?.subscription_status === 'trialing'
+        })
+        setSubscriptionStatus(hasAnyActiveOrg ? 'active' : 'none')
       } else {
         setSubscriptionStatus('none')
       }
