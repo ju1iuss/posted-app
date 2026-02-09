@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useTransition } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,8 @@ import {
   Expand,
   Wand2,
   Loader2,
-  Check
+  Check,
+  CheckCircle2
 } from "lucide-react"
 import Image from "next/image"
 import { 
@@ -48,6 +49,7 @@ import {
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 import { TemplateSelectorModal } from "@/components/template-selector-modal"
 import { CreditLimitModal } from "@/components/credit-limit-modal"
 import { PostCarouselCard } from "@/components/post-carousel-card"
@@ -99,25 +101,42 @@ export default function AccountPage() {
   const [enhancingPrompt, setEnhancingPrompt] = useState(false)
   const [showSaved, setShowSaved] = useState(false)
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false)
-  const [isPending, startTransition] = useTransition()
   
   const supabase = useMemo(() => createClient(), [])
 
+  // Track org id for template caching
+  const [lastTemplateOrgId, setLastTemplateOrgId] = useState<string | null>(null)
+
   useEffect(() => {
+    let cancelled = false
+
     async function loadAccountData() {
       if (!accountId) return
 
-      startTransition(() => {
+      // Only show full skeleton on very first load (no account yet)
+      // For subsequent switches, keep old data visible
+      if (!account) {
         setLoading(true)
-      })
+      }
 
       try {
-        // Fetch account first with organization credits
-        const { data: accountData, error: accountError } = await supabase
-          .from('accounts')
-          .select('*, organizations(credits)')
-          .eq('id', accountId)
-          .single()
+        // Fetch account and posts in PARALLEL
+        const [accountResult, postsResult] = await Promise.all([
+          supabase
+            .from('accounts')
+            .select('*, organizations(credits)')
+            .eq('id', accountId)
+            .single(),
+          supabase
+            .from('posts')
+            .select('*')
+            .eq('account_id', accountId)
+            .order('created_at', { ascending: false })
+        ])
+
+        if (cancelled) return
+
+        const { data: accountData, error: accountError } = accountResult
 
         if (accountError) {
           console.error('Error loading account:', accountError)
@@ -136,45 +155,77 @@ export default function AccountPage() {
           return
         }
         
+        // Update account + posts immediately so UI swaps fast
         setAccount(accountData)
 
-        // Fetch templates with first slide (after account is loaded)
-        const { data: templatesData, error: templatesError } = await supabase
-          .from('templates')
-          .select(`
-            *,
-            template_slides (
-              id,
-              position,
-              background_type,
-              background_image_id,
-              background_color,
-              background_image_url
-            )
-          `)
-          .or(`organization_id.eq.${accountData.organization_id},is_premade.eq.true`)
-        
-        if (templatesError) {
-          console.error('Error loading templates:', templatesError)
-          toast.error('Failed to load templates')
+        // Process posts
+        const { data: postsData, error: postsError } = postsResult
+
+        if (postsError) {
+          console.error('Error loading posts:', postsError)
+          setPosts([])
+        } else if (!postsData || postsData.length === 0) {
+          setPosts([])
         } else {
-          // Fetch layers for first slide of each template
-          const templateIds = templatesData?.map(t => t.id).filter(Boolean) || []
-          let layersBySlide: Record<string, any[]> = {}
+          // Fetch post images in background
+          const postIds = postsData.map(p => p.id)
+          const { data: postImagesData } = await supabase
+            .from('post_images')
+            .select(`post_id, position, images (url, storage_path)`)
+            .in('post_id', postIds)
+            .order('position', { ascending: true })
+
+          if (cancelled) return
+
+          const imageMap = new Map<string, string>()
+          if (postImagesData) {
+            postImagesData.forEach((pi: any) => {
+              if (!imageMap.has(pi.post_id) && pi.images?.url) {
+                imageMap.set(pi.post_id, pi.images.url)
+              }
+            })
+          }
+
+          const transformedPosts = postsData.map((post: any) => {
+            const thumbnail = imageMap.get(post.id) || null
+            const metrics = post.metrics as any || {}
+            const views = metrics.views || 0
+            return {
+              id: post.id,
+              thumbnail,
+              views: formatViews(views),
+              type: post.type,
+              content: post.content,
+              title: post.title,
+              caption: post.caption,
+              status: post.status
+            }
+          })
+          setPosts(transformedPosts)
+        }
+
+        setLoading(false)
+
+        // Fetch templates only if org changed (they're shared across accounts in same org)
+        if (accountData.organization_id !== lastTemplateOrgId) {
+          const { data: templatesData, error: templatesError } = await supabase
+            .from('templates')
+            .select(`*, template_slides (id, position, background_type, background_image_id, background_color, background_image_url)`)
+            .or(`organization_id.eq.${accountData.organization_id},is_premade.eq.true`)
+
+          if (cancelled) return
           
-          if (templateIds.length > 0) {
+          if (!templatesError && templatesData) {
             const slideIdsByTemplate: Record<string, string[]> = {}
-            templatesData?.forEach(t => {
+            templatesData.forEach(t => {
               const sortedSlides = [...(t.template_slides || [])].sort((a: any, b: any) => a.position - b.position)
               if (sortedSlides.length > 0 && sortedSlides[0].id) {
-                if (!slideIdsByTemplate[t.id]) {
-                  slideIdsByTemplate[t.id] = []
-                }
-                slideIdsByTemplate[t.id].push(sortedSlides[0].id)
+                slideIdsByTemplate[t.id] = [sortedSlides[0].id]
               }
             })
 
             const allSlideIds = Object.values(slideIdsByTemplate).flat()
+            let layersBySlide: Record<string, any[]> = {}
             
             if (allSlideIds.length > 0) {
               const { data: layersData } = await supabase
@@ -182,114 +233,38 @@ export default function AccountPage() {
                 .select('*')
                 .in('slide_id', allSlideIds)
               
+              if (cancelled) return
               if (layersData) {
                 layersData.forEach((layer: any) => {
                   if (layer.slide_id) {
-                    if (!layersBySlide[layer.slide_id]) {
-                      layersBySlide[layer.slide_id] = []
-                    }
+                    if (!layersBySlide[layer.slide_id]) layersBySlide[layer.slide_id] = []
                     layersBySlide[layer.slide_id].push(layer)
                   }
                 })
               }
             }
+
+            const templatesWithThumbnails = templatesData.map(t => {
+              const sortedSlides = [...(t.template_slides || [])].sort((a: any, b: any) => a.position - b.position)
+              const firstSlide = sortedSlides[0] || null
+              const firstSlideLayers = firstSlide?.id ? (layersBySlide[firstSlide.id] || []) : []
+              return { ...t, firstSlide, firstSlideLayers }
+            })
+
+            setTemplates(templatesWithThumbnails)
+            setLastTemplateOrgId(accountData.organization_id)
           }
-          
-          // Transform to include first slide and its layers
-          const templatesWithThumbnails = templatesData?.map(t => {
-            const sortedSlides = [...(t.template_slides || [])].sort((a: any, b: any) => a.position - b.position)
-            const firstSlide = sortedSlides[0] || null
-            const firstSlideLayers = firstSlide?.id ? (layersBySlide[firstSlide.id] || []) : []
-            
-            return { 
-              ...t, 
-              firstSlide,
-              firstSlideLayers
-            }
-          })
-
-          setTemplates(templatesWithThumbnails || [])
         }
-
-        // Fetch posts
-        const { data: postsData, error: postsError } = await supabase
-          .from('posts')
-          .select('*')
-          .eq('account_id', accountId)
-          .order('created_at', { ascending: false })
-
-        if (postsError) {
-          console.error('Error loading posts:', postsError)
-          toast.error('Failed to load posts')
-          setPosts([])
-          setLoading(false)
-          return
-        }
-
-        if (!postsData || postsData.length === 0) {
-          setPosts([])
-          setLoading(false)
-          return
-        }
-
-        // Fetch all post images for these posts
-        const postIds = postsData.map(p => p.id)
-        const { data: postImagesData, error: postImagesError } = await supabase
-          .from('post_images')
-          .select(`
-            post_id,
-            position,
-            images (
-              url,
-              storage_path
-            )
-          `)
-          .in('post_id', postIds)
-          .order('position', { ascending: true })
-
-        if (postImagesError) {
-          console.error('Error loading post images:', postImagesError)
-          // Continue without images rather than failing completely
-        }
-
-        // Create a map of post_id -> first image
-        const imageMap = new Map<string, string>()
-        if (postImagesData) {
-          postImagesData.forEach((pi: any) => {
-            if (!imageMap.has(pi.post_id) && pi.images?.url) {
-              imageMap.set(pi.post_id, pi.images.url)
-            }
-          })
-        }
-
-        // Transform posts to include thumbnail and content
-        const transformedPosts = postsData.map((post: any) => {
-          const thumbnail = imageMap.get(post.id) || null
-          const metrics = post.metrics as any || {}
-          const views = metrics.views || 0
-          
-          return {
-            id: post.id,
-            thumbnail,
-            views: formatViews(views),
-            type: post.type,
-            content: post.content,
-            title: post.title,
-            caption: post.caption,
-            status: post.status
-          }
-        })
-
-        setPosts(transformedPosts)
       } catch (error: any) {
         console.error('Unexpected error loading account:', error)
         toast.error(error?.message || 'An unexpected error occurred')
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
     loadAccountData()
+    return () => { cancelled = true }
   }, [accountId, supabase])
 
   const updateAccountField = async (field: string, value: any) => {
@@ -325,7 +300,7 @@ export default function AccountPage() {
       setShowSaved(true)
       setTimeout(() => setShowSaved(false), 2000)
 
-      if (field === 'username' || field === 'name') {
+      if (field === 'username' || field === 'name' || field === 'status') {
         window.dispatchEvent(new CustomEvent('account-updated', {
           detail: { id: accountId, [field]: value }
         }))
@@ -617,17 +592,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-background pb-10 relative">
-      {/* Subtle loading indicator when switching accounts */}
-      {loading && account && (
-        <div className="absolute top-4 right-4 z-50 flex items-center gap-2 px-3 py-1.5 bg-zinc-800/90 backdrop-blur-sm rounded-lg border border-zinc-700 shadow-lg">
-          <Loader2 className="size-3.5 animate-spin text-[#ddfc7b]" />
-          <span className="text-[10px] font-bold text-[#dbdbdb]">Loading...</span>
-        </div>
-      )}
-      <div className={cn(
-        "max-w-[600px] mx-auto px-4 pt-6 transition-opacity duration-200",
-        loading && account && "opacity-60"
-      )}>
+      <div className="max-w-[600px] mx-auto px-4 pt-6">
         {/* Profile Info Section */}
         <div className="flex flex-col gap-4 mb-8">
           <div className="flex items-center justify-between mb-2 h-6">
@@ -749,52 +714,35 @@ export default function AccountPage() {
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="h-9 px-4 border border-zinc-700 rounded-md text-sm font-bold text-[#dbdbdb] hover:bg-zinc-700 flex items-center gap-2">
-                  {account.status ? account.status.charAt(0).toUpperCase() + account.status.slice(1) : 'Planning'}
+                <Button variant="outline" className="h-9 px-4 border border-zinc-700 rounded-md text-sm font-bold text-[#dbdbdb] hover:bg-zinc-700 hover:text-[#dbdbdb] focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none flex items-center gap-2">
+                  {account.status ? account.status.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Planning'}
                   <ChevronDown className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700">
-                <DropdownMenuItem 
-                  onClick={() => updateAccountField('status', 'planning')}
-                  className={`text-[11px] font-bold gap-2 ${
-                    account.status === 'planning' 
-                      ? 'text-[#ddfc7b] focus:text-[#ddfc7b]' 
-                      : 'text-[#dbdbdb] focus:text-[#dbdbdb]'
-                  } focus:bg-zinc-700`}
-                >
-                  Planning
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => updateAccountField('status', 'active')}
-                  className={`text-[11px] font-bold gap-2 ${
-                    account.status === 'active' 
-                      ? 'text-[#ddfc7b] focus:text-[#ddfc7b]' 
-                      : 'text-[#dbdbdb] focus:text-[#dbdbdb]'
-                  } focus:bg-zinc-700`}
-                >
-                  Active
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => updateAccountField('status', 'paused')}
-                  className={`text-[11px] font-bold gap-2 ${
-                    account.status === 'paused' 
-                      ? 'text-[#ddfc7b] focus:text-[#ddfc7b]' 
-                      : 'text-[#dbdbdb] focus:text-[#dbdbdb]'
-                  } focus:bg-zinc-700`}
-                >
-                  Paused
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => updateAccountField('status', 'archived')}
-                  className={`text-[11px] font-bold gap-2 ${
-                    account.status === 'archived' 
-                      ? 'text-[#ddfc7b] focus:text-[#ddfc7b]' 
-                      : 'text-[#dbdbdb] focus:text-[#dbdbdb]'
-                  } focus:bg-zinc-700`}
-                >
-                  Archived
-                </DropdownMenuItem>
+                {[
+                  { value: 'planning', label: 'Planning', dot: 'bg-zinc-500' },
+                  { value: 'warming_up', label: 'Warming Up', dot: 'bg-yellow-500' },
+                  { value: 'active', label: 'Active', dot: 'bg-green-500' },
+                  { value: 'not_active', label: 'Not Active', dot: 'bg-zinc-500' },
+                  { value: 'paused', label: 'Paused', dot: 'bg-red-500' },
+                ].map((s) => (
+                  <DropdownMenuItem 
+                    key={s.value}
+                    onClick={() => updateAccountField('status', s.value)}
+                    className={cn(
+                      "text-[11px] font-bold gap-2",
+                      "focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:outline-none",
+                      "hover:bg-zinc-700 hover:text-[#dbdbdb]",
+                      account.status === s.value 
+                        ? 'text-[#ddfc7b] focus:text-[#ddfc7b] focus:bg-zinc-700 hover:text-[#ddfc7b]' 
+                        : 'text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700'
+                    )}
+                  >
+                    <div className={cn("size-2 rounded-full", s.dot)} />
+                    {s.label}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -989,6 +937,24 @@ export default function AccountPage() {
                   post.status === 'posted' ? 'cursor-default' : 'cursor-pointer'
                 )}
               >
+                {/* Status badge */}
+                <div className="absolute top-2 left-2 z-20">
+                  <Badge 
+                    className={cn(
+                      "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none",
+                      post.status === 'posted' && "bg-green-500/20 text-green-400",
+                      post.status === 'exported' && "bg-orange-500/20 text-orange-400",
+                      post.status === 'ready' && "bg-blue-500/20 text-blue-400",
+                      post.status === 'draft' && "bg-zinc-500/20 text-zinc-400"
+                    )}
+                  >
+                    {post.status === 'posted' && <CheckCircle2 className="size-2.5 mr-1" />}
+                    {post.status === 'draft' ? 'Draft' : 
+                     post.status === 'ready' ? 'Ready' : 
+                     post.status === 'exported' ? 'Exported' : 
+                     post.status === 'posted' ? 'Posted' : 'Draft'}
+                  </Badge>
+                </div>
                 {post.thumbnail ? (
                   <Image
                     src={post.thumbnail}

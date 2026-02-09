@@ -23,12 +23,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
-import { Plus, UserCircle, Sparkles, Shuffle, Layout } from "lucide-react"
+import { Plus, UserCircle, Sparkles, Shuffle, Layout, Folder } from "lucide-react"
 import Image from "next/image"
 import { TemplateSelectorModal } from "@/components/template-selector-modal"
 
 interface CreateAccountModalProps {
   organizationId: string
+  brands?: any[]
   onAccountCreated?: (account: any) => void
   children?: React.ReactNode
 }
@@ -78,18 +79,19 @@ const AI_PROMPTS = [
   "Generate content about productivity and study tips. Make it actionable and inspiring."
 ]
 
-export function CreateAccountModal({ organizationId, onAccountCreated, children }: CreateAccountModalProps) {
+export function CreateAccountModal({ organizationId, brands = [], onAccountCreated, children }: CreateAccountModalProps) {
   const [open, setOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [profilePicture, setProfilePicture] = useState<string>("")
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
+  const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null)
   const [showTemplateModal, setShowTemplateModal] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
     username: "",
     prompt: "",
     notes: "",
-    status: "planning" as "planning" | "active" | "paused" | "archived"
+    status: "planning" as "planning" | "warming_up" | "active" | "not_active" | "paused"
   })
   
   const supabase = useMemo(() => createClient(), [])
@@ -109,6 +111,7 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
         .from('accounts')
         .insert({
           organization_id: organizationId,
+          brand_id: selectedBrandId || null,
           name: formData.name,
           username: formData.username || null,
           prompt: formData.prompt || null,
@@ -126,6 +129,7 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
       setOpen(false)
       setProfilePicture("")
       setSelectedTemplateId(null)
+      setSelectedBrandId(null)
       setFormData({
         name: "",
         username: "",
@@ -271,6 +275,29 @@ export function CreateAccountModal({ organizationId, onAccountCreated, children 
                 </div>
               </div>
             </div>
+
+            {/* Brand Selection */}
+            {brands.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-[#dbdbdb] flex items-center gap-1.5">
+                  <Folder className="size-3 text-[#dbdbdb]/60" />
+                  Brand / Folder
+                </Label>
+                <Select value={selectedBrandId || "none"} onValueChange={(v) => setSelectedBrandId(v === "none" ? null : v)}>
+                  <SelectTrigger className="h-9 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm">
+                    <SelectValue placeholder="No brand (ungrouped)" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-900 border-zinc-700">
+                    <SelectItem value="none" className="text-[#dbdbdb]/60">No brand (ungrouped)</SelectItem>
+                    {brands.map((brand) => (
+                      <SelectItem key={brand.id} value={brand.id} className="text-[#dbdbdb]">
+                        {brand.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             {/* AI Prompt */}
             <div className="space-y-1.5">

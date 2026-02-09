@@ -3,7 +3,8 @@
 import * as React from "react"
 import { useEffect, useState, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { Building2, ChevronDown, Check, Plus } from "lucide-react"
+import { Building2, ChevronDown, Check, Plus, Settings } from "lucide-react"
+import Link from "next/link"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,9 +20,10 @@ interface OrganizationSelectProps {
   currentOrg: any
   onOrgChange: (org: any) => void
   onCreateOrg?: () => void
+  onJoinOrg?: () => void
 }
 
-export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onCreateOrg }: OrganizationSelectProps) {
+export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onCreateOrg, onJoinOrg }: OrganizationSelectProps) {
   if (!currentOrg) return <div className="h-8 w-32 animate-pulse bg-zinc-800 rounded-lg" />
 
   return (
@@ -45,24 +47,32 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onC
       >
         <DropdownMenuLabel className="px-2 py-1.5 text-[9px] font-bold text-[#dbdbdb]/60 uppercase tracking-widest">Organizations</DropdownMenuLabel>
         {organizations.map((org) => (
-          <DropdownMenuItem 
-            key={org.id}
-            onClick={() => onOrgChange(org)}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-all focus:bg-zinc-700"
-          >
-            <div className="flex size-6 items-center justify-center rounded-md bg-zinc-700 border border-zinc-600">
-              <Building2 className="size-3 text-[#dbdbdb]" />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-[12px] font-bold text-[#dbdbdb]">{org.name}</span>
-              <span className="text-[8px] font-black text-[#dbdbdb]/60 uppercase tracking-wider mt-0.5">{org.plan}</span>
-            </div>
-            {org.id === currentOrg?.id && (
-              <div className="ml-auto flex size-4 items-center justify-center rounded-full bg-[#ddfc7b]">
-                <Check className="size-2 text-[#171717]" />
+          <div key={org.id} className="flex items-center gap-1 group/item pr-1">
+            <DropdownMenuItem 
+              onClick={() => onOrgChange(org)}
+              className="flex-1 flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-all focus:bg-zinc-700"
+            >
+              <div className="flex size-6 items-center justify-center rounded-md bg-zinc-700 border border-zinc-600">
+                <Building2 className="size-3 text-[#dbdbdb]" />
               </div>
-            )}
-          </DropdownMenuItem>
+              <div className="flex flex-col leading-none">
+                <span className="text-[12px] font-bold text-[#dbdbdb]">{org.name}</span>
+                <span className="text-[8px] font-black text-[#dbdbdb]/60 uppercase tracking-wider mt-0.5">{org.plan}</span>
+              </div>
+              {org.id === currentOrg?.id && (
+                <div className="ml-auto flex size-4 items-center justify-center rounded-full bg-[#ddfc7b]">
+                  <Check className="size-2 text-[#171717]" />
+                </div>
+              )}
+            </DropdownMenuItem>
+            <Link 
+              href="/settings" 
+              className="size-7 flex items-center justify-center rounded-lg hover:bg-zinc-700 text-[#dbdbdb]/40 hover:text-[#dbdbdb] transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Settings className="size-3.5" />
+            </Link>
+          </div>
         ))}
         <DropdownMenuSeparator className="my-1 bg-zinc-700" />
         <DropdownMenuItem 
@@ -73,6 +83,15 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onC
             <Plus className="size-3" />
           </div>
           <span className="text-[12px] font-bold">New Org</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem 
+          onClick={() => onJoinOrg?.()}
+          className="flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer text-[#dbdbdb]/60 transition-all hover:text-[#dbdbdb] focus:bg-zinc-700"
+        >
+          <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-zinc-600">
+            <Plus className="size-3" />
+          </div>
+          <span className="text-[12px] font-bold">Join Workspace</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

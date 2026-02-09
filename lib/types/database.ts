@@ -87,17 +87,47 @@ export interface Database {
           created_at?: string
         }
       }
+      brands: {
+        Row: {
+          id: string
+          organization_id: string
+          name: string
+          color: string | null
+          position: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          name: string
+          color?: string | null
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          name?: string
+          color?: string | null
+          position?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
       accounts: {
         Row: {
           id: string
           organization_id: string
+          brand_id: string | null
           name: string
           username: string | null
           theme: string | null
           niche: string | null
           prompt: string | null
           notes: string | null
-          status: 'planning' | 'active' | 'paused' | 'archived'
+          status: 'planning' | 'warming_up' | 'active' | 'not_active' | 'paused'
           metadata: Json
           template_id: string | null
           created_at: string
@@ -106,13 +136,14 @@ export interface Database {
         Insert: {
           id?: string
           organization_id: string
+          brand_id?: string | null
           name: string
           username?: string | null
           theme?: string | null
           niche?: string | null
           prompt?: string | null
           notes?: string | null
-          status?: 'planning' | 'active' | 'paused' | 'archived'
+          status?: 'planning' | 'warming_up' | 'active' | 'not_active' | 'paused'
           metadata?: Json
           template_id?: string | null
           created_at?: string
@@ -121,13 +152,14 @@ export interface Database {
         Update: {
           id?: string
           organization_id?: string
+          brand_id?: string | null
           name?: string
           username?: string | null
           theme?: string | null
           niche?: string | null
           prompt?: string | null
           notes?: string | null
-          status?: 'planning' | 'active' | 'paused' | 'archived'
+          status?: 'planning' | 'warming_up' | 'active' | 'not_active' | 'paused'
           metadata?: Json
           template_id?: string | null
           created_at?: string

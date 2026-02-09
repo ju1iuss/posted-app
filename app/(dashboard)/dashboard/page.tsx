@@ -46,126 +46,84 @@ export default function DashboardPage() {
 
     setOrganizationId(orgId)
 
-    // 1. Fetch Accounts Stats
-    const { count: totalAccounts } = await supabase
-      .from('accounts')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-
     const lastMonth = new Date()
     lastMonth.setMonth(lastMonth.getMonth() - 1)
-    const { count: accountsLastMonth } = await supabase
-      .from('accounts')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-      .lt('created_at', lastMonth.toISOString())
-
-    const accountsDiff = (totalAccounts || 0) - (accountsLastMonth || 0)
-
-    // 2. Fetch Template Stats
-    const { count: totalTemplates } = await supabase
-      .from('templates')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-
     const lastWeek = new Date()
     lastWeek.setDate(lastWeek.getDate() - 7)
-    const { count: newTemplatesThisWeek } = await supabase
-      .from('templates')
-      .select('*', { count: 'exact', head: true })
-      .eq('organization_id', orgId)
-      .gte('created_at', lastWeek.toISOString())
 
-    // 3. Fetch Export Stats (Posts with status exported/posted)
-    const { data: orgAccounts } = await supabase
-      .from('accounts')
-      .select('id')
-      .eq('organization_id', orgId)
-    
-    const accountIds = orgAccounts?.map(a => a.id) || []
-    
+    // Fetch everything in parallel
+    const [
+      accountsCountRes,
+      accountsLastMonthRes,
+      templatesCountRes,
+      newTemplatesRes,
+      orgAccountsRes,
+      recentAccountsRes,
+      latestTemplatesRes,
+    ] = await Promise.all([
+      supabase.from('accounts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
+      supabase.from('accounts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).lt('created_at', lastMonth.toISOString()),
+      supabase.from('templates').select('*', { count: 'exact', head: true }).eq('organization_id', orgId),
+      supabase.from('templates').select('*', { count: 'exact', head: true }).eq('organization_id', orgId).gte('created_at', lastWeek.toISOString()),
+      supabase.from('accounts').select('id').eq('organization_id', orgId),
+      supabase.from('accounts').select('id, name, username, metadata, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(3),
+      supabase.from('templates').select('id, name, created_at').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5),
+    ])
+
+    const totalAccounts = accountsCountRes.count || 0
+    const accountsLastMonth = accountsLastMonthRes.count || 0
+    const accountsDiff = totalAccounts - accountsLastMonth
+    const totalTemplates = templatesCountRes.count || 0
+    const newTemplatesThisWeek = newTemplatesRes.count || 0
+    const accountIds = orgAccountsRes.data?.map(a => a.id) || []
+
+    setLatestAccounts(recentAccountsRes.data || [])
+
+    // Second batch: things that depend on accountIds
     let totalExports = 0
+    let postsForGrid: any[] = []
+    let postsForActivity: any[] = []
+
     if (accountIds.length > 0) {
-      const { count } = await supabase
-        .from('posts')
-        .select('*', { count: 'exact', head: true })
-        .in('account_id', accountIds)
-        .in('status', ['exported', 'posted'])
-      totalExports = count || 0
-    }
+      const [exportsRes, recentPostsRes, activityPostsRes] = await Promise.all([
+        supabase.from('posts').select('*', { count: 'exact', head: true }).in('account_id', accountIds).in('status', ['exported', 'posted']),
+        supabase.from('posts').select('id, account_id, created_at, status, content, accounts(id, name, username, metadata)').in('account_id', accountIds).not('content', 'is', null).order('created_at', { ascending: false }).limit(5),
+        supabase.from('posts').select('id, created_at, accounts(name)').in('account_id', accountIds).order('created_at', { ascending: false }).limit(5),
+      ])
 
-    setStats({
-      totalAccounts: { 
-        value: totalAccounts || 0, 
-        change: accountsDiff >= 0 ? `+${accountsDiff} from last month` : `${accountsDiff} from last month`
-      },
-      activeTemplates: { 
-        value: totalTemplates || 0, 
-        change: `${newTemplatesThisWeek || 0} new this week` 
-      },
-      totalExports: { 
-        value: totalExports, 
-        change: "+0% increase" 
-      }
-    })
+      totalExports = exportsRes.count || 0
 
-    // 4. Fetch Latest Accounts (Quick Links)
-    const { data: recentAccounts } = await supabase
-      .from('accounts')
-      .select('id, name, username, metadata, created_at')
-      .eq('organization_id', orgId)
-      .order('created_at', { ascending: false })
-      .limit(3)
-    
-    setLatestAccounts(recentAccounts || [])
-
-    // 5. Fetch Latest Posts
-    if (accountIds.length > 0) {
-      const { data: recentPosts, error: postsError } = await supabase
-        .from('posts')
-        .select(`
-          id, 
-          account_id,
-          created_at, 
-          status,
-          content,
-          accounts(id, name, username, metadata)
-        `)
-        .in('account_id', accountIds)
-        .not('content', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(5)
-      
-      if (postsError) {
-        console.error('Error fetching posts:', postsError)
-      }
-      
-      // Filter to ensure content has required structure with valid slides
-      const validPosts = (recentPosts || []).filter((post: any) => 
-        post.content && 
-        typeof post.content === 'object' && 
+      const validPosts = (recentPostsRes.data || []).filter((post: any) =>
+        post.content &&
+        typeof post.content === 'object' &&
         post.content.template_id &&
         Array.isArray(post.content.slides) &&
         post.content.slides.length > 0
       )
-      
-      setLatestPosts(validPosts)
-    } else {
-      setLatestPosts([])
+      postsForGrid = validPosts
+      postsForActivity = activityPostsRes.data || []
     }
 
-    // 6. Fetch Recent Activity
+    setStats({
+      totalAccounts: {
+        value: totalAccounts,
+        change: accountsDiff >= 0 ? `+${accountsDiff} from last month` : `${accountsDiff} from last month`
+      },
+      activeTemplates: {
+        value: totalTemplates,
+        change: `${newTemplatesThisWeek} new this week`
+      },
+      totalExports: {
+        value: totalExports,
+        change: "+0% increase"
+      }
+    })
+
+    setLatestPosts(postsForGrid)
+
+    // Build activity feed
     const activities: any[] = []
-
-    // Latest templates
-    const { data: latestTemplates } = await supabase
-      .from('templates')
-      .select('id, name, created_at')
-      .eq('organization_id', orgId)
-      .order('created_at', { ascending: false })
-      .limit(5)
-
-    latestTemplates?.forEach(t => {
+    latestTemplatesRes.data?.forEach(t => {
       activities.push({
         id: `template-${t.id}`,
         title: `New template created: ${t.name}`,
@@ -173,30 +131,17 @@ export default function DashboardPage() {
         type: 'template'
       })
     })
-
-    // Latest posts
-    if (accountIds.length > 0) {
-      const { data: latestPosts } = await supabase
-        .from('posts')
-        .select('id, created_at, accounts(name)')
-        .in('account_id', accountIds)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      latestPosts?.forEach((p: any) => {
-        activities.push({
-          id: `post-${p.id}`,
-          title: `New post generated for ${p.accounts?.name || 'account'}`,
-          time: new Date(p.created_at),
-          type: 'post'
-        })
+    postsForActivity.forEach((p: any) => {
+      activities.push({
+        id: `post-${p.id}`,
+        title: `New post generated for ${p.accounts?.name || 'account'}`,
+        time: new Date(p.created_at),
+        type: 'post'
       })
-    }
+    })
 
     setRecentActivity(
-      activities
-        .sort((a, b) => b.time.getTime() - a.time.getTime())
-        .slice(0, 5)
+      activities.sort((a, b) => b.time.getTime() - a.time.getTime()).slice(0, 5)
     )
 
     setLoading(false)

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Building2, Users, ArrowLeft } from "lucide-react"
+import { Building2, Users, ArrowLeft, LogOut } from "lucide-react"
 
 type View = 'choice' | 'create' | 'join'
 
@@ -121,6 +121,11 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
+
 
   if (hasOrg === false) {
     return (
@@ -181,6 +186,14 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                       <div className="font-semibold text-[#dbdbdb]">Join Workspace</div>
                       <div className="text-xs text-[#dbdbdb]/60 font-normal">You've been invited to a team</div>
                     </div>
+                  </Button>
+                  <Button 
+                    variant="ghost"
+                    onClick={handleSignOut}
+                    className="w-full h-11 mt-2 text-[#dbdbdb]/60 hover:text-red-400 hover:bg-zinc-700 transition-all font-medium rounded-xl flex items-center justify-center gap-2"
+                  >
+                    <LogOut className="size-4" />
+                    Logout
                   </Button>
                 </div>
               </>

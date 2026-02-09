@@ -23,6 +23,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { ChevronLeft, ChevronRight, MoreHorizontal, Download, Trash2, Circle, CheckCircle2, Loader2 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { cn } from '@/lib/utils'
 import html2canvas from 'html2canvas'
@@ -536,7 +537,21 @@ export function PostCarouselCard({
         className
       )}
     >
-      {/* Status badge - removed redundant badge as requested */}
+      {/* Status badge */}
+      <div className="absolute top-2 left-2 z-30">
+        <Badge 
+          className={cn(
+            "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none",
+            status === 'posted' && "bg-green-500/20 text-green-400",
+            status === 'exported' && "bg-orange-500/20 text-orange-400",
+            status === 'ready' && "bg-blue-500/20 text-blue-400",
+            status === 'draft' && "bg-zinc-500/20 text-zinc-400"
+          )}
+        >
+          {status === 'posted' && <CheckCircle2 className="size-2.5 mr-1" />}
+          {statusLabels[status]}
+        </Badge>
+      </div>
 
       {/* 3-dot menu */}
       <div className="absolute top-2 right-2 z-30" data-dropdown>

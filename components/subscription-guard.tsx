@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Loader2 } from "lucide-react"
@@ -11,11 +11,16 @@ const ALLOWED_ROUTES = ['/subscribe', '/billing', '/success']
 export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const checkedRef = useRef(false)
   const pathname = usePathname()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
+  // Only check subscription ONCE on mount, not on every navigation
   useEffect(() => {
+    if (checkedRef.current) return
+    checkedRef.current = true
+
     async function checkSubscription() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -42,7 +47,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
     }
 
     checkSubscription()
-  }, [supabase, pathname])
+  }, [supabase])
 
   // Check if current route is allowed without subscription
   const isAllowedRoute = ALLOWED_ROUTES.some(route => pathname.startsWith(route))
@@ -58,7 +63,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="fixed inset-0 flex items-center justify-center bg-[#171717] z-50">
         <Loader2 className="size-6 animate-spin text-zinc-400" />
       </div>
     )
@@ -67,7 +72,7 @@ export function SubscriptionGuard({ children }: { children: React.ReactNode }) {
   // If no active subscription and not on allowed route, show nothing (will redirect)
   if (!hasActiveSubscription && !isAllowedRoute) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="fixed inset-0 flex items-center justify-center bg-[#171717] z-50">
         <Loader2 className="size-6 animate-spin text-zinc-400" />
       </div>
     )

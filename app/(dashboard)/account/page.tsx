@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { createClient } from "@/lib/supabase/client"
-import { User, Mail, Shield, UserCircle, Loader2, Camera } from "lucide-react"
+import { User, Mail, Shield, UserCircle, Loader2, Camera, Settings, ArrowRight } from "lucide-react"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -270,6 +271,27 @@ export default function AccountPage() {
                 Update Password
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Organization Settings Link */}
+        <Card className="bg-[#2a2a2a] border-zinc-800 shadow-xl overflow-hidden">
+          <CardContent className="p-0">
+            <Link 
+              href="/settings"
+              className="flex items-center justify-between p-6 hover:bg-zinc-800/50 transition-all group"
+            >
+              <div className="flex items-center gap-4">
+                <div className="size-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-[#ddfc7b] border border-zinc-700 shadow-sm transition-transform group-hover:scale-105">
+                  <Settings className="size-6" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-lg font-bold text-white">Workspace Settings</p>
+                  <p className="text-sm text-zinc-400">Manage your organization, team members, and invite codes.</p>
+                </div>
+              </div>
+              <ArrowRight className="size-5 text-zinc-600 group-hover:text-[#ddfc7b] group-hover:translate-x-1 transition-all" />
+            </Link>
           </CardContent>
         </Card>
       </div>

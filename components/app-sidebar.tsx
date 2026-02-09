@@ -2,7 +2,7 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { 
@@ -37,7 +37,9 @@ import {
   Zap,
   Globe,
   BarChart3,
-  ArrowLeft
+  ArrowLeft,
+  Folder,
+  FolderOpen
 } from "lucide-react"
 import {
   Sidebar,
@@ -97,6 +99,12 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  DragStartEvent,
+  DragOverEvent,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
+  Active,
+  Over,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -139,16 +147,38 @@ const profileItems = [
   },
 ]
 
+// Status color mapping
+const STATUS_COLORS: Record<string, string> = {
+  planning: 'bg-zinc-500',
+  warming_up: 'bg-yellow-500',
+  active: 'bg-green-500',
+  not_active: 'bg-zinc-500',
+  paused: 'bg-red-500',
+}
+
+function StatusDot({ status }: { status: string }) {
+  const color = STATUS_COLORS[status] || STATUS_COLORS.planning
+  return (
+    <div className={cn("size-2 rounded-full flex-shrink-0", color)} />
+  )
+}
+
 function SortableAccountItem({ 
   item, 
   isActive, 
-  pathname,
-  isSortable
+  isSortable,
+  indented = false,
+  isDraggingRef,
+  isOver,
+  dropPosition
 }: { 
   item: any, 
   isActive: boolean, 
-  pathname: string | null,
-  isSortable: boolean
+  isSortable: boolean,
+  indented?: boolean,
+  isDraggingRef: React.RefObject<boolean>,
+  isOver?: boolean,
+  dropPosition?: 'above' | 'below' | 'inside' | null
 }) {
   const {
     attributes,
@@ -167,12 +197,16 @@ function SortableAccountItem({
     transition,
     zIndex: isDragging ? 50 : undefined,
     position: 'relative' as const,
+    opacity: isDragging ? 0.3 : 1,
   }
 
   const url = `/accounts/${item.id}`
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style} className={cn("relative group/item", indented && "pl-3")}>
+      {isOver && dropPosition === 'above' && (
+        <div className="absolute -top-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
+      )}
       <SidebarMenuItem className="list-none">
         <SidebarMenuButton 
           asChild
@@ -180,34 +214,122 @@ function SortableAccountItem({
           tooltip={item.username || item.name}
           className={cn(
             "h-8 px-2 rounded-md transition-all duration-300 hover:bg-zinc-800 active:scale-[0.98] data-[active=true]:bg-zinc-800/80 data-[active=true]:text-[#dbdbdb] data-[active=true]:shadow-sm data-[active=true]:before:opacity-0",
-            isDragging && "bg-zinc-800 shadow-lg scale-[1.02] z-50",
+            isSortable && "cursor-grab active:cursor-grabbing",
             !isSortable && "cursor-pointer"
           )}
         >
-          <Link href={url} prefetch={true}>
-            {item.metadata?.profile_picture ? (
-              <div className="size-[14px] rounded-full overflow-hidden border border-zinc-700 flex-shrink-0">
-                <Image
-                  src={`/profiles/${item.metadata.profile_picture}`}
-                  alt={item.username || item.name}
-                  width={14}
-                  height={14}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            ) : (
-              <UserCircle className={cn(
-                "size-[14px] transition-transform duration-300 flex-shrink-0",
-                isActive ? "text-[#dbdbdb]" : "text-[#dbdbdb]"
-              )} />
-            )}
-            <span className={cn(
-              "font-bold tracking-tight text-[11px]",
-              isActive ? "text-[#dbdbdb]" : "text-[#dbdbdb]"
-            )}>{item.username || item.name}</span>
+          <Link 
+            href={url} 
+            prefetch={true}
+            {...attributes}
+            {...listeners}
+            onClick={(e) => {
+              if (isDraggingRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+            }}
+          >
+            <StatusDot status={item.status || 'planning'} />
+            <span className="font-bold tracking-tight text-[11px] text-[#dbdbdb]">
+              {item.username || item.name}
+            </span>
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
+      {isOver && dropPosition === 'below' && (
+        <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
+      )}
+    </div>
+  )
+}
+
+function SortableFolderItem({
+  id,
+  brand,
+  childCount,
+  isExpanded,
+  onToggle,
+  isSortable,
+  isDraggingRef,
+  isOver,
+  dropPosition
+}: {
+  id: string,
+  brand: any,
+  childCount: number,
+  isExpanded: boolean,
+  onToggle: () => void,
+  isSortable: boolean,
+  isDraggingRef: React.RefObject<boolean>,
+  isOver?: boolean,
+  dropPosition?: 'above' | 'below' | 'inside' | null
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: id,
+    disabled: !isSortable
+  })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : undefined,
+    position: 'relative' as const,
+    opacity: isDragging ? 0.3 : 1,
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative group/folder">
+      {isOver && dropPosition === 'above' && (
+        <div className="absolute -top-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
+      )}
+      <button
+        onClick={(e) => {
+          if (isDraggingRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          onToggle();
+        }}
+        {...attributes}
+        {...listeners}
+        type="button"
+        className={cn(
+          "w-full h-7 px-2 rounded-md flex items-center gap-1.5 hover:bg-zinc-800 transition-all group",
+          isSortable && "cursor-grab active:cursor-grabbing",
+          isOver && dropPosition === 'inside' && "bg-[#ddfc7b]/15 ring-2 ring-[#ddfc7b]/60"
+        )}
+      >
+        {isExpanded ? (
+          <FolderOpen className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
+        ) : (
+          <Folder className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
+        )}
+        <span className={cn(
+          "font-bold tracking-tight text-[10px] flex-1 text-left truncate",
+          isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/80"
+        )}>
+          {brand.name}
+        </span>
+        <span className="text-[9px] text-[#dbdbdb]/40 font-bold">
+          {childCount}
+        </span>
+        <ChevronRight className={cn(
+          "size-2.5 text-[#dbdbdb]/40 transition-transform duration-200",
+          isExpanded && "rotate-90"
+        )} />
+      </button>
+      {isOver && dropPosition === 'below' && (
+        <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
+      )}
     </div>
   )
 }
@@ -219,6 +341,23 @@ export function AppSidebar() {
     organizations.find(org => org.id === currentOrgId) || organizations[0]
   , [organizations, currentOrgId])
   const [accounts, setAccounts] = useState<any[]>([])
+  const [brands, setBrands] = useState<any[]>([])
+  const [expandedBrands, setExpandedBrands] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('expanded-brands')
+      if (saved) {
+        try {
+          return new Set(JSON.parse(saved))
+        } catch (e) {
+          return new Set()
+        }
+      }
+    }
+    return new Set()
+  })
+  const [showCreateBrand, setShowCreateBrand] = useState(false)
+  const [newBrandName, setNewBrandName] = useState("")
+  const [creatingBrand, setCreatingBrand] = useState(false)
   const [sortBy, setSortBy] = useState<'created' | 'name' | 'username' | 'own'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('accounts-sort-by')
@@ -229,19 +368,20 @@ export function AppSidebar() {
     return 'own'
   })
   const [user, setUser] = useState<any>(null)
-  const [customOrder, setCustomOrder] = useState<string[]>(() => {
+  const [sidebarOrder, setSidebarOrder] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('accounts-custom-order')
+      const saved = localStorage.getItem('sidebar-order')
       if (saved) {
-        try {
-          return JSON.parse(saved)
-        } catch (e) {
-          return []
-        }
+        try { return JSON.parse(saved) } catch { return [] }
       }
     }
     return []
   })
+
+  // Visual drag state
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
+  const [overId, setOverId] = useState<string | null>(null)
+  const [dropPosition, setDropPosition] = useState<'above' | 'below' | 'inside' | null>(null)
 
   // Save sorting preference to localStorage
   useEffect(() => {
@@ -250,40 +390,274 @@ export function AppSidebar() {
     }
   }, [sortBy])
 
-  // Save custom order to localStorage
+  // Save sidebar order to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && sidebarOrder.length > 0) {
+      localStorage.setItem('sidebar-order', JSON.stringify(sidebarOrder))
+    }
+  }, [sidebarOrder])
+
+  // Save expanded brands to localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('accounts-custom-order', JSON.stringify(customOrder))
+      localStorage.setItem('expanded-brands', JSON.stringify([...expandedBrands]))
     }
-  }, [customOrder])
+  }, [expandedBrands])
 
-  // Sync custom order with accounts
-  useEffect(() => {
-    if (accounts.length > 0) {
-      const accountIds = accounts.map(a => a.id)
-      const missingIds = accountIds.filter(id => !customOrder.includes(id))
-      if (missingIds.length > 0) {
-        setCustomOrder(prev => [...prev, ...missingIds])
+  // Build canonical sidebar order from brands/accounts data
+  // Accounts with a brand_id ALWAYS appear under their brand folder
+  const buildCanonicalOrder = (brandsList: any[], accountsList: any[], prevOrder: string[]) => {
+    const allBrandKeys = new Set(brandsList.map(b => `brand:${b.id}`))
+    const allAccountIds = new Set(accountsList.map(a => a.id))
+    const accountsByBrand = new Map<string, any[]>()
+    const ungrouped: any[] = []
+    
+    for (const acc of accountsList) {
+      if (acc.brand_id) {
+        const list = accountsByBrand.get(acc.brand_id) || []
+        list.push(acc)
+        accountsByBrand.set(acc.brand_id, list)
+      } else {
+        ungrouped.push(acc)
       }
     }
-  }, [accounts])
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+    if (prevOrder.length === 0) {
+      // Build from scratch
+      const order: string[] = []
+      const sortedBrands = [...brandsList].sort((a, b) => (a.position || 0) - (b.position || 0))
+      for (const brand of sortedBrands) {
+        order.push(`brand:${brand.id}`)
+        for (const acc of (accountsByBrand.get(brand.id) || [])) order.push(acc.id)
+      }
+      for (const acc of ungrouped) order.push(acc.id)
+      return order
+    }
+
+    // Clean stale items and separate brands/ungrouped order from prev
+    const cleanedBrandsAndUngrouped = prevOrder.filter(item => {
+      if (item.startsWith('brand:')) return allBrandKeys.has(item)
+      // Only keep ungrouped accounts in their prev position
+      const acc = accountsList.find(a => a.id === item)
+      return acc && !acc.brand_id
     })
-  )
+
+    // Build final order: walk through prev order of brands/ungrouped,
+    // injecting brand children right after each brand
+    const order: string[] = []
+    const placed = new Set<string>()
+
+    for (const item of cleanedBrandsAndUngrouped) {
+      if (item.startsWith('brand:')) {
+        order.push(item)
+        placed.add(item)
+        const brandId = item.slice(6)
+        const children = accountsByBrand.get(brandId) || []
+        // Preserve previous child order if available
+        const prevChildren = prevOrder.filter(id => !id.startsWith('brand:') && children.some(c => c.id === id))
+        const newChildren = children.filter(c => !prevChildren.includes(c.id))
+        for (const cid of prevChildren) { order.push(cid); placed.add(cid) }
+        for (const c of newChildren) { order.push(c.id); placed.add(c.id) }
+      } else {
+        order.push(item)
+        placed.add(item)
+      }
+    }
+
+    // Add any missing brands
+    for (const brand of brandsList) {
+      const key = `brand:${brand.id}`
+      if (!placed.has(key)) {
+        order.push(key)
+        placed.add(key)
+        for (const acc of (accountsByBrand.get(brand.id) || [])) {
+          if (!placed.has(acc.id)) { order.push(acc.id); placed.add(acc.id) }
+        }
+      }
+    }
+
+    // Add any missing ungrouped accounts
+    for (const acc of ungrouped) {
+      if (!placed.has(acc.id)) { order.push(acc.id); placed.add(acc.id) }
+    }
+
+    return order
+  }
+
+  // Sync sidebarOrder with loaded brands and accounts
+  useEffect(() => {
+    if (brands.length === 0 && accounts.length === 0) return
+
+    setSidebarOrder(prev => {
+      const newOrder = buildCanonicalOrder(brands, accounts, prev)
+      if (newOrder.length === prev.length && newOrder.every((item, i) => item === prev[i])) return prev
+      return newOrder
+    })
+  }, [brands, accounts])
+
+  const pointerSensor = useSensor(PointerSensor, {
+    activationConstraint: { distance: 8 },
+  })
+  const keyboardSensor = useSensor(KeyboardSensor, {
+    coordinateGetter: sortableKeyboardCoordinates,
+  })
+  const sensors = useSensors(pointerSensor, keyboardSensor)
+
+  // Get child account count for a brand using actual brand_id
+  const getChildCount = (brandSortId: string) => {
+    const brandId = brandSortId.slice(6)
+    return accounts.filter(a => a.brand_id === brandId).length
+  }
+
+  const isDraggingRef = useRef(false)
+
+  const handleDragStart = (event: DragStartEvent) => {
+    isDraggingRef.current = true
+    setActiveDragId(event.active.id as string)
+  }
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event
+    if (!over) {
+      setOverId(null)
+      setDropPosition(null)
+      return
+    }
+
+    const activeId = active.id as string
+    const currentOverId = over.id as string
+    
+    if (activeId === currentOverId) {
+      setOverId(null)
+      setDropPosition(null)
+      return
+    }
+
+    setOverId(currentOverId)
+
+    // If dragging an account over a folder → always show "inside"
+    // This is the primary action users want: drop account onto folder to add it
+    if (!activeId.startsWith('brand:') && currentOverId.startsWith('brand:')) {
+      setDropPosition('inside')
+      return
+    }
+
+    // For all other cases (folder over folder, account over account), show above/below
+    const activeRect = active.rect.current.translated
+    const overRect = over.rect
+    if (!activeRect) {
+      setDropPosition('below')
+      return
+    }
+
+    const activeCenterY = activeRect.top + activeRect.height / 2
+    const overCenterY = overRect.top + overRect.height / 2
+    setDropPosition(activeCenterY < overCenterY ? 'above' : 'below')
+  }
 
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event
+    const savedDropPosition = dropPosition
+    
+    // Clear visual states
+    setActiveDragId(null)
+    setOverId(null)
+    setDropPosition(null)
+    setTimeout(() => { isDraggingRef.current = false }, 100)
 
-    if (active.id !== over?.id && sortBy === 'own') {
-      setCustomOrder((items) => {
-        const oldIndex = items.indexOf(active.id as string)
-        const newIndex = items.indexOf(over?.id as string)
-        return arrayMove(items, oldIndex, newIndex)
-      })
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    if (sortBy !== 'own') return
+
+    const activeId = active.id as string
+    const targetId = over.id as string
+    const prevOrder = [...sidebarOrder]
+
+    if (activeId.startsWith('brand:')) {
+      // === MOVING A FOLDER (with its children) ===
+      // Gather the brand + its children as a group
+      const brandIdx = prevOrder.indexOf(activeId)
+      const brandId = activeId.slice(6)
+      const childIds = accounts.filter(a => a.brand_id === brandId).map(a => a.id)
+      const group = [activeId, ...prevOrder.filter(id => childIds.includes(id))]
+      const remaining = prevOrder.filter(item => !group.includes(item))
+      
+      let targetIndex = remaining.indexOf(targetId)
+      if (targetIndex === -1) targetIndex = remaining.length - 1
+      
+      const insertAt = savedDropPosition === 'below' ? targetIndex + 1 : targetIndex
+      const newOrder = [...remaining.slice(0, insertAt), ...group, ...remaining.slice(insertAt)]
+
+      setSidebarOrder(newOrder)
+
+      // Persist brand positions only - NO account membership changes
+      const brandPositions = new Map<string, number>()
+      let pos = 0
+      for (const item of newOrder) {
+        if (item.startsWith('brand:')) brandPositions.set(item.slice(6), pos++)
+      }
+      setBrands(prev => prev.map(b => 
+        brandPositions.has(b.id) ? { ...b, position: brandPositions.get(b.id)! } : b
+      ).sort((a, b) => (a.position || 0) - (b.position || 0)))
+
+      void (async () => {
+        const entries = [...brandPositions.entries()]
+        await Promise.all(entries.map(([id, p]) => 
+          supabase.from('brands').update({ position: p }).eq('id', id)
+        ))
+      })().catch(console.error)
+
+    } else {
+      // === MOVING AN ACCOUNT ===
+      const account = accounts.find(a => a.id === activeId)
+      if (!account) return
+      const oldBrandId = account.brand_id || null
+
+      if (savedDropPosition === 'inside' && targetId.startsWith('brand:')) {
+        // DROP ONTO A FOLDER → assign to that folder
+        const newBrandId = targetId.slice(6)
+        
+        // Update account state
+        setAccounts(prev => prev.map(a =>
+          a.id === activeId ? { ...a, brand_id: newBrandId } : a
+        ))
+        // Rebuild order will happen via the useEffect sync
+        void supabase.from('accounts').update({ brand_id: newBrandId }).eq('id', activeId)
+
+      } else {
+        // REORDER ONLY - figure out if we need to remove from folder
+        const oldIndex = prevOrder.indexOf(activeId)
+        const newIndex = prevOrder.indexOf(targetId)
+        if (oldIndex === -1 || newIndex === -1) return
+        const newOrder = arrayMove(prevOrder, oldIndex, newIndex)
+        
+        // Check: is the account now positioned outside its brand group?
+        // If account has a brand_id, it must stay under its brand.
+        // If user drags it away from the brand group, remove the brand_id.
+        if (oldBrandId) {
+          const brandKey = `brand:${oldBrandId}`
+          const brandIdx = newOrder.indexOf(brandKey)
+          const accountIdx = newOrder.indexOf(activeId)
+          
+          // Account is "in" the brand if it's after the brand key and before the next brand key
+          let stillInBrand = false
+          if (brandIdx !== -1 && accountIdx > brandIdx) {
+            stillInBrand = true
+            for (let i = brandIdx + 1; i < accountIdx; i++) {
+              if (newOrder[i].startsWith('brand:')) { stillInBrand = false; break }
+            }
+          }
+
+          if (!stillInBrand) {
+            // Dragged out of folder → remove brand_id
+            setAccounts(prev => prev.map(a =>
+              a.id === activeId ? { ...a, brand_id: null } : a
+            ))
+            void supabase.from('accounts').update({ brand_id: null }).eq('id', activeId)
+          }
+        }
+
+        setSidebarOrder(newOrder)
+      }
     }
   }
 
@@ -297,32 +671,43 @@ export function AppSidebar() {
       return sorted.sort((a, b) => {
         const aTime = a.created_at ? new Date(a.created_at).getTime() : 0
         const bTime = b.created_at ? new Date(b.created_at).getTime() : 0
-        return bTime - aTime // Newest first
-      })
-    } else if (sortBy === 'own' && customOrder.length > 0) {
-      // Sort based on customOrder array of IDs
-      return sorted.sort((a, b) => {
-        const aIndex = customOrder.indexOf(a.id)
-        const bIndex = customOrder.indexOf(b.id)
-        
-        // If an item isn't in customOrder, put it at the end
-        if (aIndex === -1 && bIndex === -1) return 0
-        if (aIndex === -1) return 1
-        if (bIndex === -1) return -1
-        
-        return aIndex - bIndex
+        return bTime - aTime
       })
     }
     return sorted
-  }, [accounts, sortBy, customOrder])
+  }, [accounts, sortBy])
+
+  // Build the visible order for rendering
+  const visibleOrder = useMemo(() => {
+    if (sortBy === 'own') {
+      // Use sidebarOrder, but hide accounts in collapsed brands
+      return sidebarOrder.filter(item => {
+        if (item.startsWith('brand:')) return true
+        const acc = accounts.find(a => a.id === item)
+        if (acc?.brand_id && !expandedBrands.has(acc.brand_id)) return false
+        return true
+      })
+    }
+    // Non-custom sort: brands first with sorted accounts, then ungrouped
+    const order: string[] = []
+    for (const brand of brands) {
+      order.push(`brand:${brand.id}`)
+      if (expandedBrands.has(brand.id)) {
+        for (const acc of sortedAccounts.filter(a => a.brand_id === brand.id)) order.push(acc.id)
+      }
+    }
+    for (const acc of sortedAccounts.filter(a => !a.brand_id)) order.push(acc.id)
+    return order
+  }, [sortBy, sidebarOrder, accounts, brands, sortedAccounts, expandedBrands])
+
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
   
   const [open, setOpen] = useState(false)
   const [helpText, setHelpText] = useState("")
   const [showPostForMe, setShowPostForMe] = useState(false)
   const [numAccounts, setNumAccounts] = useState([5])
   const [feedbackText, setFeedbackText] = useState("")
-  const [mounted, setMounted] = useState(false)
   
   // Create Organization State
   const [isCreateOrgModalOpen, setIsCreateOrgModalOpen] = useState(false)
@@ -356,10 +741,15 @@ export function AppSidebar() {
 
   // Listen for account updates from other components
   useEffect(() => {
-    const handleAccountUpdate = (event: CustomEvent<{ id: string; username?: string; name?: string }>) => {
-      const { id, username, name } = event.detail
+    const handleAccountUpdate = (event: CustomEvent<{ id: string; username?: string; name?: string; status?: string }>) => {
+      const { id, username, name, status } = event.detail
       setAccounts(prev => prev.map(acc => 
-        acc.id === id ? { ...acc, ...(username && { username }), ...(name && { name }) } : acc
+        acc.id === id ? { 
+          ...acc, 
+          ...(username && { username }), 
+          ...(name && { name }),
+          ...(status && { status })
+        } : acc
       ))
     }
 
@@ -386,18 +776,28 @@ export function AppSidebar() {
   }, [])
 
   useEffect(() => {
-    async function loadAccounts() {
+    async function loadAccountsAndBrands() {
       if (!currentOrgId) return
       
-      const { data: accs } = await supabase
-        .from('accounts')
-        .select('*')
-        .eq('organization_id', currentOrgId)
+      const [accountsRes, brandsRes] = await Promise.all([
+        supabase
+          .from('accounts')
+          .select('*')
+          .eq('organization_id', currentOrgId),
+        supabase
+          .from('brands')
+          .select('*')
+          .eq('organization_id', currentOrgId)
+          .order('position', { ascending: true })
+      ])
       
-      setAccounts(accs || [])
+      setAccounts(accountsRes.data || [])
+      // Sort brands by position to ensure correct order
+      const sortedBrands = (brandsRes.data || []).sort((a, b) => (a.position || 0) - (b.position || 0))
+      setBrands(sortedBrands)
     }
     
-    loadAccounts()
+    loadAccountsAndBrands()
   }, [currentOrgId, supabase])
 
   useEffect(() => {
@@ -458,14 +858,104 @@ export function AppSidebar() {
     router.push('/login')
   }
 
+  const toggleBrand = (brandId: string) => {
+    setExpandedBrands(prev => {
+      const next = new Set(prev)
+      if (next.has(brandId)) {
+        next.delete(brandId)
+      } else {
+        next.add(brandId)
+      }
+      return next
+    })
+  }
+
+  const handleCreateBrand = async () => {
+    if (!newBrandName.trim() || !currentOrgId) return
+    setCreatingBrand(true)
+    
+    try {
+      const { data, error } = await supabase
+        .from('brands')
+        .insert({
+          organization_id: currentOrgId,
+          name: newBrandName.trim(),
+          position: brands.length
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setBrands(prev => [...prev, data])
+      setExpandedBrands(prev => new Set([...prev, data.id]))
+      setNewBrandName("")
+      setShowCreateBrand(false)
+      toast.success("Brand created!")
+    } catch (error: any) {
+      console.error(error)
+      toast.error(error.message || "Failed to create brand")
+    } finally {
+      setCreatingBrand(false)
+    }
+  }
+
   const handleJoinOrg = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inviteCode.trim()) return
     setCreatingOrg(true)
 
     try {
-      // For now, show a message that they need an invite
-      toast.info("Ask your team admin to invite you to their workspace.")
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error("No user found")
+
+      // 1. Find organization with this invite code
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('invite_code', inviteCode.trim())
+        .single()
+
+      if (orgError || !org) {
+        throw new Error("Invalid invite code. Please check with your admin.")
+      }
+
+      // 2. Check if already a member
+      const { data: existingMember } = await supabase
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', org.id)
+        .eq('profile_id', user.id)
+        .single()
+
+      if (existingMember) {
+        throw new Error("You are already a member of this workspace.")
+      }
+
+      // 3. Add user as member
+      const { error: memberError } = await supabase
+        .from('organization_members')
+        .insert({
+          organization_id: org.id,
+          profile_id: user.id,
+          role: 'member'
+        })
+
+      if (memberError) throw memberError
+
+      // 4. Refresh organizations list
+      const { data: orgMembers } = await supabase
+        .from('organization_members')
+        .select('organizations(*)')
+        .eq('profile_id', user.id)
+
+      const orgs = orgMembers?.map(m => (m as any).organizations).filter(Boolean) || []
+      setOrganizations(orgs)
+      
+      // 5. Set joined org as current
+      setCurrentOrgId(org.id)
+
+      toast.success(`Successfully joined ${org.name}!`)
       setIsCreateOrgModalOpen(false)
       setOrgModalView('choice')
       setInviteCode("")
@@ -536,6 +1026,14 @@ export function AppSidebar() {
 
   if (loading) return <Sidebar className="bg-[#171717] backdrop-blur-xl" />
 
+  const activeDragItem = activeDragId ? (
+    activeDragId.startsWith('brand:') ? (
+      brands.find(b => `brand:${b.id}` === activeDragId)
+    ) : (
+      accounts.find(a => a.id === activeDragId)
+    )
+  ) : null;
+
   return (
     <>
       <Sidebar className="bg-[#171717] backdrop-blur-xl">
@@ -558,7 +1056,14 @@ export function AppSidebar() {
               organizations={organizations}
               currentOrg={currentOrg}
               onOrgChange={(org) => setCurrentOrgId(org.id)}
-              onCreateOrg={() => setIsCreateOrgModalOpen(true)}
+              onCreateOrg={() => {
+                setOrgModalView('create')
+                setIsCreateOrgModalOpen(true)
+              }}
+              onJoinOrg={() => {
+                setOrgModalView('join')
+                setIsCreateOrgModalOpen(true)
+              }}
             />
           </div>
 
@@ -694,45 +1199,128 @@ export function AppSidebar() {
                 </DropdownMenu>
 
                 {currentOrg?.id && (
-                  <CreateAccountModal 
-                    organizationId={currentOrg.id} 
-                    onAccountCreated={(newAccount) => setAccounts(prev => [...prev, newAccount])}
-                  >
-                    <button className="size-4 flex items-center justify-center rounded-md bg-zinc-800 hover:bg-[#ddfc7b] text-[#dbdbdb]/60 hover:text-[#171717] transition-all duration-300 border border-zinc-700 shadow-xs">
-                      <Plus className="size-2" />
-                    </button>
-                  </CreateAccountModal>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="size-4 flex items-center justify-center rounded-md bg-zinc-800 hover:bg-[#ddfc7b] text-[#dbdbdb]/60 hover:text-[#171717] transition-all duration-300 border border-zinc-700 shadow-xs">
+                        <Plus className="size-2" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-36 bg-zinc-900 border-zinc-800 p-1">
+                      <CreateAccountModal 
+                        organizationId={currentOrg.id}
+                        brands={brands}
+                        onAccountCreated={(newAccount) => setAccounts(prev => [...prev, newAccount])}
+                      >
+                        <DropdownMenuItem 
+                          onSelect={(e) => e.preventDefault()}
+                          className="text-[10px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-800 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60"
+                        >
+                          <UserCircle className="size-3" />
+                          <span>New Account</span>
+                        </DropdownMenuItem>
+                      </CreateAccountModal>
+                      <DropdownMenuItem 
+                        onClick={() => setShowCreateBrand(true)}
+                        className="text-[10px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-800 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60"
+                      >
+                        <Folder className="size-3" />
+                        <span>New Brand</span>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 )}
               </div>
             </div>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {sortedAccounts.length > 0 ? (
-                  <DndContext 
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext 
+                    items={visibleOrder}
+                    strategy={verticalListSortingStrategy}
                   >
-                    <SortableContext 
-                      items={sortedAccounts.map(a => a.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      {sortedAccounts.map((item) => {
-                        const url = `/accounts/${item.id}`
-                        const isActive = pathname?.startsWith(url)
+                    {visibleOrder.map((sortId) => {
+                      if (sortId.startsWith('brand:')) {
+                        const brandId = sortId.slice(6)
+                        const brand = brands.find(b => b.id === brandId)
+                        if (!brand) return null
+                        const isExpanded = expandedBrands.has(brandId)
+                        const childCount = getChildCount(sortId)
                         return (
-                          <SortableAccountItem 
-                            key={item.id} 
-                            item={item} 
-                            isActive={isActive} 
-                            pathname={pathname}
+                          <SortableFolderItem
+                            key={sortId}
+                            id={sortId}
+                            brand={brand}
+                            childCount={childCount}
+                            isExpanded={isExpanded}
+                            onToggle={() => toggleBrand(brandId)}
                             isSortable={sortBy === 'own'}
+                            isDraggingRef={isDraggingRef}
+                            isOver={overId === sortId}
+                            dropPosition={overId === sortId ? dropPosition : null}
                           />
                         )
-                      })}
-                    </SortableContext>
-                  </DndContext>
-                ) : (
+                      } else {
+                        const account = accounts.find(a => a.id === sortId)
+                        if (!account) return null
+                        // Use actual brand_id for indentation, not positional derivation
+                        const isIndented = Boolean(account.brand_id)
+                        const url = `/accounts/${sortId}`
+                        const isActive = Boolean(pathname?.startsWith(url))
+                        return (
+                          <SortableAccountItem
+                            key={sortId}
+                            item={account}
+                            isActive={isActive}
+                            isSortable={sortBy === 'own'}
+                            indented={isIndented}
+                            isDraggingRef={isDraggingRef}
+                            isOver={overId === sortId}
+                            dropPosition={overId === sortId ? dropPosition : null}
+                          />
+                        )
+                      }
+                    })}
+                  </SortableContext>
+
+                  <DragOverlay dropAnimation={{
+                    sideEffects: defaultDropAnimationSideEffects({
+                      styles: {
+                        active: {
+                          opacity: '0.5',
+                        },
+                      },
+                    }),
+                  }}>
+                    {activeDragId ? (
+                      <div className="opacity-80 scale-105 transition-transform">
+                        {activeDragId.startsWith('brand:') ? (
+                          <div className="w-full h-7 px-2 rounded-md flex items-center gap-1.5 bg-zinc-800 border border-[#ddfc7b]/30 shadow-xl">
+                            <Folder className="size-3 text-[#ddfc7b]" />
+                            <span className="font-bold tracking-tight text-[10px] text-[#ddfc7b] flex-1 text-left truncate">
+                              {(activeDragItem as any)?.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="h-8 px-2 rounded-md flex items-center gap-2.5 bg-zinc-800 border border-[#ddfc7b]/30 shadow-xl min-w-[120px]">
+                            <StatusDot status={(activeDragItem as any)?.status || 'planning'} />
+                            <span className="font-bold tracking-tight text-[11px] text-[#ddfc7b]">
+                              {(activeDragItem as any)?.username || (activeDragItem as any)?.name}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </DragOverlay>
+                </DndContext>
+
+                {/* Empty state */}
+                {accounts.length === 0 && brands.length === 0 && (
                   <div className="px-2 py-1.5 text-[8px] text-[#dbdbdb]/60 font-bold uppercase tracking-widest bg-zinc-800/50 rounded-md border border-dashed border-zinc-700 text-center">No accounts</div>
                 )}
               </SidebarMenu>
@@ -983,7 +1571,7 @@ export function AppSidebar() {
             <Sparkles className="size-3.5 group-hover:animate-pulse" />
             <span className="text-[10px] font-black uppercase tracking-widest">Automate Posting</span>
           </Button>
-        </SidebarFooter>
+          </SidebarFooter>
       </Sidebar>
 
       {/* Dialogs and Command Palettes */}
@@ -1329,6 +1917,60 @@ export function AppSidebar() {
               </div>
             </form>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Brand Dialog */}
+      <Dialog open={showCreateBrand} onOpenChange={setShowCreateBrand}>
+        <DialogContent className="sm:max-w-[400px] rounded-2xl border-zinc-700 bg-zinc-800">
+          <DialogHeader className="space-y-3">
+            <div className="flex justify-center">
+              <div className="size-12 rounded-xl bg-zinc-900 flex items-center justify-center shadow-md border border-zinc-700">
+                <Folder className="size-5 text-[#ddfc7b]" />
+              </div>
+            </div>
+            <div className="space-y-1 text-center">
+              <DialogTitle className="text-lg font-bold tracking-tight text-[#dbdbdb]">Create Brand</DialogTitle>
+              <DialogDescription className="text-sm text-[#dbdbdb]/60">
+                Create a folder to organize your accounts by brand or project.
+              </DialogDescription>
+            </div>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="brand-name" className="text-xs font-semibold text-[#dbdbdb]">Brand Name</Label>
+              <Input
+                id="brand-name"
+                placeholder="e.g., Acme Corp"
+                value={newBrandName}
+                onChange={(e) => setNewBrandName(e.target.value)}
+                className="h-10 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb] text-sm focus:bg-zinc-800"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleCreateBrand()
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => setShowCreateBrand(false)}
+              className="flex-1 h-10 rounded-xl border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700 text-sm font-bold"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateBrand}
+              className="flex-1 h-10 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-black rounded-xl text-sm uppercase tracking-widest"
+              disabled={creatingBrand || !newBrandName.trim()}
+            >
+              {creatingBrand ? "Creating..." : "Create"}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </>
