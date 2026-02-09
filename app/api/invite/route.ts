@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     }
 
     const { data, error } = await resend.emails.send({
-      from: 'Posted App <onboarding@resend.dev>',
+      from: 'Posted App <posted@tasy.ai>',
       to: email,
       subject: `You've been invited to join ${orgName} on Posted`,
       html: `

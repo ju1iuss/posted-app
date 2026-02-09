@@ -458,7 +458,10 @@ export function PostCarouselCard({
     }
   }
 
-  const handleStatusChange = async (newStatus: PostStatus) => {
+  const handleStatusChange = async (newStatus: PostStatus, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation()
+    }
     try {
       const { error } = await supabase
         .from('posts')
@@ -537,21 +540,17 @@ export function PostCarouselCard({
         className
       )}
     >
-      {/* Status badge */}
-      <div className="absolute top-2 left-2 z-30">
-        <Badge 
-          className={cn(
-            "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none",
-            status === 'posted' && "bg-green-500/20 text-green-400",
-            status === 'exported' && "bg-orange-500/20 text-orange-400",
-            status === 'ready' && "bg-blue-500/20 text-blue-400",
-            status === 'draft' && "bg-zinc-500/20 text-zinc-400"
-          )}
-        >
-          {status === 'posted' && <CheckCircle2 className="size-2.5 mr-1" />}
-          {statusLabels[status]}
-        </Badge>
-      </div>
+      {/* Status badge - only show if posted */}
+      {status === 'posted' && (
+        <div className="absolute top-2 left-2 z-30">
+          <Badge 
+            className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none bg-green-500/20 text-green-400"
+          >
+            <CheckCircle2 className="size-2.5 mr-1" />
+            Posted
+          </Badge>
+        </div>
+      )}
 
       {/* 3-dot menu */}
       <div className="absolute top-2 right-2 z-30" data-dropdown>
@@ -564,24 +563,40 @@ export function PostCarouselCard({
               <MoreHorizontal className="size-4" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700">
+          <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700">
                 {status === 'posted' ? <CheckCircle2 className="size-3 text-green-400" /> : <Circle className="size-3" />}
                 Status: {statusLabels[status]}
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="bg-zinc-800 border-zinc-700">
+              <DropdownMenuSubContent className="bg-zinc-800 border-zinc-700" onClick={(e) => e.stopPropagation()}>
                 <DropdownMenuRadioGroup value={status} onValueChange={(v) => handleStatusChange(v as PostStatus)}>
-                  <DropdownMenuRadioItem value="draft" className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700">
+                  <DropdownMenuRadioItem 
+                    value="draft" 
+                    className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Draft
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="ready" className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700">
+                  <DropdownMenuRadioItem 
+                    value="ready" 
+                    className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Ready
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="exported" className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700">
+                  <DropdownMenuRadioItem 
+                    value="exported" 
+                    className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Exported
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="posted" className="text-[11px] font-bold text-green-400 focus:bg-zinc-700">
+                  <DropdownMenuRadioItem 
+                    value="posted" 
+                    className="text-[11px] font-bold text-green-400 focus:bg-zinc-700"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     Posted
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
@@ -595,22 +610,31 @@ export function PostCarouselCard({
                 {isExporting ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
                 {isExporting ? 'Exporting...' : 'Download'}
               </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="bg-zinc-800 border-zinc-700">
+              <DropdownMenuSubContent className="bg-zinc-800 border-zinc-700" onClick={(e) => e.stopPropagation()}>
                 <DropdownMenuItem 
-                  onClick={(e) => handleDownload(e as any, 'with-text')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownload(e as any, 'with-text')
+                  }}
                   className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700 flex items-center justify-between gap-2"
                 >
                   <span>Download</span>
                   <span className="px-1.5 py-0.5 text-[9px] font-bold bg-zinc-700 text-zinc-300 rounded-full">Default</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  onClick={(e) => handleDownload(e as any, 'separate')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownload(e as any, 'separate')
+                  }}
                   className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
                 >
                   Images without text
                 </DropdownMenuItem>
                 <DropdownMenuItem 
-                  onClick={(e) => handleDownload(e as any, 'first-slide-separate')}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleDownload(e as any, 'first-slide-separate')
+                  }}
                   className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
                 >
                   First slide without text
@@ -619,7 +643,10 @@ export function PostCarouselCard({
             </DropdownMenuSub>
             <DropdownMenuSeparator className="bg-zinc-700" />
             <DropdownMenuItem 
-              onClick={handleDelete}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleDelete(e)
+              }}
               className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-zinc-700"
             >
               <Trash2 className="size-3" />

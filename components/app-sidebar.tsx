@@ -39,7 +39,8 @@ import {
   BarChart3,
   ArrowLeft,
   Folder,
-  FolderOpen
+  FolderOpen,
+  X
 } from "lucide-react"
 import {
   Sidebar,
@@ -103,8 +104,7 @@ import {
   DragOverEvent,
   DragOverlay,
   defaultDropAnimationSideEffects,
-  Active,
-  Over,
+  useDroppable,
 } from "@dnd-kit/core"
 import {
   arrayMove,
@@ -163,6 +163,25 @@ function StatusDot({ status }: { status: string }) {
   )
 }
 
+function UnassignDropZone({ isOver }: { isOver: boolean }) {
+  const { setNodeRef } = useDroppable({ id: 'unassign' })
+  
+  return (
+    <div 
+      ref={setNodeRef}
+      className={cn(
+        "mt-2 mx-1 h-8 px-2 rounded-md border-2 border-dashed flex items-center justify-center gap-2 transition-all",
+        isOver 
+          ? "border-red-500/60 bg-red-500/10 text-red-400" 
+          : "border-zinc-700 text-[#dbdbdb]/40 hover:border-zinc-600"
+      )}
+    >
+      <X className="size-3" />
+      <span className="font-bold tracking-tight text-[10px]">Remove from folder</span>
+    </div>
+  )
+}
+
 function SortableAccountItem({ 
   item, 
   isActive, 
@@ -204,9 +223,6 @@ function SortableAccountItem({
 
   return (
     <div ref={setNodeRef} style={style} className={cn("relative group/item", indented && "pl-3")}>
-      {isOver && dropPosition === 'above' && (
-        <div className="absolute -top-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
-      )}
       <SidebarMenuItem className="list-none">
         <SidebarMenuButton 
           asChild
@@ -237,9 +253,6 @@ function SortableAccountItem({
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
-      {isOver && dropPosition === 'below' && (
-        <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
-      )}
     </div>
   )
 }
@@ -287,9 +300,6 @@ function SortableFolderItem({
 
   return (
     <div ref={setNodeRef} style={style} className="relative group/folder">
-      {isOver && dropPosition === 'above' && (
-        <div className="absolute -top-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
-      )}
       <button
         onClick={(e) => {
           if (isDraggingRef.current) {
@@ -327,9 +337,6 @@ function SortableFolderItem({
           isExpanded && "rotate-90"
         )} />
       </button>
-      {isOver && dropPosition === 'below' && (
-        <div className="absolute -bottom-px left-0 right-0 h-[2px] bg-[#ddfc7b] z-50 rounded-full shadow-[0_0_6px_2px_rgba(221,252,123,0.6)]" />
-      )}
     </div>
   )
 }
@@ -535,8 +542,13 @@ export function AppSidebar() {
 
     setOverId(currentOverId)
 
+    // Handle unassign drop zone
+    if (currentOverId === 'unassign') {
+      setDropPosition('inside')
+      return
+    }
+
     // If dragging an account over a folder → always show "inside"
-    // This is the primary action users want: drop account onto folder to add it
     if (!activeId.startsWith('brand:') && currentOverId.startsWith('brand:')) {
       setDropPosition('inside')
       return
@@ -558,7 +570,6 @@ export function AppSidebar() {
   function handleDragEnd(event: DragEndEvent) {
     const savedDropPosition = dropPosition
     
-    // Clear visual states
     setActiveDragId(null)
     setOverId(null)
     setDropPosition(null)
@@ -570,12 +581,28 @@ export function AppSidebar() {
 
     const activeId = active.id as string
     const targetId = over.id as string
+
+    // Handle unassign drop
+    if (targetId === 'unassign' && !activeId.startsWith('brand:')) {
+      const account = accounts.find(a => a.id === activeId)
+      if (account?.brand_id) {
+        setAccounts(prev => prev.map(a =>
+          a.id === activeId ? { ...a, brand_id: null } : a
+        ))
+        void (async () => {
+          const { error } = await supabase.from('accounts')
+            .update({ brand_id: null })
+            .eq('id', activeId)
+          if (error) console.error('Error removing account from folder:', error)
+        })()
+      }
+      return
+    }
+
     const prevOrder = [...sidebarOrder]
 
     if (activeId.startsWith('brand:')) {
-      // === MOVING A FOLDER (with its children) ===
-      // Gather the brand + its children as a group
-      const brandIdx = prevOrder.indexOf(activeId)
+      // === MOVING A FOLDER ===
       const brandId = activeId.slice(6)
       const childIds = accounts.filter(a => a.brand_id === brandId).map(a => a.id)
       const group = [activeId, ...prevOrder.filter(id => childIds.includes(id))]
@@ -589,12 +616,13 @@ export function AppSidebar() {
 
       setSidebarOrder(newOrder)
 
-      // Persist brand positions only - NO account membership changes
+      // Persist brand positions
       const brandPositions = new Map<string, number>()
       let pos = 0
       for (const item of newOrder) {
         if (item.startsWith('brand:')) brandPositions.set(item.slice(6), pos++)
       }
+      
       setBrands(prev => prev.map(b => 
         brandPositions.has(b.id) ? { ...b, position: brandPositions.get(b.id)! } : b
       ).sort((a, b) => (a.position || 0) - (b.position || 0)))
@@ -604,59 +632,70 @@ export function AppSidebar() {
         await Promise.all(entries.map(([id, p]) => 
           supabase.from('brands').update({ position: p }).eq('id', id)
         ))
-      })().catch(console.error)
+      })().catch(err => console.error('Error saving brand positions:', err))
 
     } else {
       // === MOVING AN ACCOUNT ===
       const account = accounts.find(a => a.id === activeId)
       if (!account) return
+      
       const oldBrandId = account.brand_id || null
+      let newBrandId = oldBrandId
+      let newOrder = [...prevOrder]
 
       if (savedDropPosition === 'inside' && targetId.startsWith('brand:')) {
-        // DROP ONTO A FOLDER → assign to that folder
-        const newBrandId = targetId.slice(6)
+        // DROP ONTO FOLDER → assign to that folder
+        newBrandId = targetId.slice(6)
         
-        // Update account state
+        // Remove from old position and insert into brand group
+        const remaining = prevOrder.filter(id => id !== activeId)
+        const brandIdx = remaining.indexOf(targetId)
+        newOrder = [...remaining.slice(0, brandIdx + 1), activeId, ...remaining.slice(brandIdx + 1)]
+      } else {
+        // REORDER OR DROP BETWEEN FOLDERS
+        const oldIndex = prevOrder.indexOf(activeId)
+        const newIndex = prevOrder.indexOf(targetId)
+        if (oldIndex !== -1 && newIndex !== -1) {
+          newOrder = arrayMove(prevOrder, oldIndex, newIndex)
+          
+          // If dropping above/below a folder (not inside), unassign
+          const targetIsFolder = targetId.startsWith('brand:')
+          if (targetIsFolder && savedDropPosition !== 'inside') {
+            newBrandId = null
+          } else {
+            // Check if it's still in its original brand group
+            if (oldBrandId) {
+              const brandKey = `brand:${oldBrandId}`
+              const brandIdx = newOrder.indexOf(brandKey)
+              const accountIdx = newOrder.indexOf(activeId)
+              
+              let stillInBrand = false
+              if (brandIdx !== -1 && accountIdx > brandIdx) {
+                stillInBrand = true
+                for (let i = brandIdx + 1; i < accountIdx; i++) {
+                  if (newOrder[i].startsWith('brand:')) { stillInBrand = false; break }
+                }
+              }
+              if (!stillInBrand) newBrandId = null
+            }
+          }
+        }
+      }
+
+      // Update states and persist
+      setSidebarOrder(newOrder)
+
+      if (oldBrandId !== newBrandId) {
         setAccounts(prev => prev.map(a =>
           a.id === activeId ? { ...a, brand_id: newBrandId } : a
         ))
-        // Rebuild order will happen via the useEffect sync
-        void supabase.from('accounts').update({ brand_id: newBrandId }).eq('id', activeId)
-
-      } else {
-        // REORDER ONLY - figure out if we need to remove from folder
-        const oldIndex = prevOrder.indexOf(activeId)
-        const newIndex = prevOrder.indexOf(targetId)
-        if (oldIndex === -1 || newIndex === -1) return
-        const newOrder = arrayMove(prevOrder, oldIndex, newIndex)
         
-        // Check: is the account now positioned outside its brand group?
-        // If account has a brand_id, it must stay under its brand.
-        // If user drags it away from the brand group, remove the brand_id.
-        if (oldBrandId) {
-          const brandKey = `brand:${oldBrandId}`
-          const brandIdx = newOrder.indexOf(brandKey)
-          const accountIdx = newOrder.indexOf(activeId)
-          
-          // Account is "in" the brand if it's after the brand key and before the next brand key
-          let stillInBrand = false
-          if (brandIdx !== -1 && accountIdx > brandIdx) {
-            stillInBrand = true
-            for (let i = brandIdx + 1; i < accountIdx; i++) {
-              if (newOrder[i].startsWith('brand:')) { stillInBrand = false; break }
-            }
-          }
-
-          if (!stillInBrand) {
-            // Dragged out of folder → remove brand_id
-            setAccounts(prev => prev.map(a =>
-              a.id === activeId ? { ...a, brand_id: null } : a
-            ))
-            void supabase.from('accounts').update({ brand_id: null }).eq('id', activeId)
-          }
-        }
-
-        setSidebarOrder(newOrder)
+        void (async () => {
+          const { error } = await supabase.from('accounts')
+            .update({ brand_id: newBrandId })
+            .eq('id', activeId)
+          if (error) console.error('Error saving account brand:', error)
+        })()
       }
     }
   }
@@ -1287,6 +1326,13 @@ export function AppSidebar() {
                       }
                     })}
                   </SortableContext>
+
+                  {/* Unassign drop zone - only show when dragging an account that has a brand */}
+                  {activeDragId && !activeDragId.startsWith('brand:') && (() => {
+                    const draggedAccount = accounts.find(a => a.id === activeDragId)
+                    if (!draggedAccount?.brand_id) return null
+                    return <UnassignDropZone isOver={overId === 'unassign'} />
+                  })()}
 
                   <DragOverlay dropAnimation={{
                     sideEffects: defaultDropAnimationSideEffects({

@@ -937,24 +937,17 @@ export default function AccountPage() {
                   post.status === 'posted' ? 'cursor-default' : 'cursor-pointer'
                 )}
               >
-                {/* Status badge */}
-                <div className="absolute top-2 left-2 z-20">
-                  <Badge 
-                    className={cn(
-                      "text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none",
-                      post.status === 'posted' && "bg-green-500/20 text-green-400",
-                      post.status === 'exported' && "bg-orange-500/20 text-orange-400",
-                      post.status === 'ready' && "bg-blue-500/20 text-blue-400",
-                      post.status === 'draft' && "bg-zinc-500/20 text-zinc-400"
-                    )}
-                  >
-                    {post.status === 'posted' && <CheckCircle2 className="size-2.5 mr-1" />}
-                    {post.status === 'draft' ? 'Draft' : 
-                     post.status === 'ready' ? 'Ready' : 
-                     post.status === 'exported' ? 'Exported' : 
-                     post.status === 'posted' ? 'Posted' : 'Draft'}
-                  </Badge>
-                </div>
+                {/* Status badge - only show if posted */}
+                {post.status === 'posted' && (
+                  <div className="absolute top-2 left-2 z-20">
+                    <Badge 
+                      className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none bg-green-500/20 text-green-400"
+                    >
+                      <CheckCircle2 className="size-2.5 mr-1" />
+                      Posted
+                    </Badge>
+                  </div>
+                )}
                 {post.thumbnail ? (
                   <Image
                     src={post.thumbnail}
