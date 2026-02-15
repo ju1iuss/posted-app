@@ -84,12 +84,12 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
 
       if (memberError) throw memberError
 
-      toast.success("Workspace created! Now let's set up your subscription.")
-      // Redirect to subscribe page for payment
-      router.push('/subscribe')
+      toast.success("Organization created! Now let's set up your subscription.")
+      // Full page nav so OrganizationGuard re-checks and hasOrg updates
+      window.location.href = '/subscribe'
     } catch (error: any) {
       console.error(error)
-      toast.error(error.message || "Failed to create workspace")
+      toast.error(error.message || "Failed to create organization")
       setCreating(false)
     }
   }
@@ -109,14 +109,14 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to join workspace')
+        throw new Error(data.error || 'Failed to join organization')
       }
 
       toast.success(`Joined ${data.organizationName} successfully!`)
       // Refresh the page to load the new organization
       window.location.reload()
     } catch (error: any) {
-      toast.error(error.message || "Failed to join workspace")
+      toast.error(error.message || "Failed to join organization")
       setCreating(false)
     }
   }
@@ -151,7 +151,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                   <div className="space-y-1 text-center">
                     <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Get Started</DialogTitle>
                     <DialogDescription className="text-[#dbdbdb]/60">
-                      Create a new workspace or join an existing one to start creating content.
+                      Create a new organization or join an existing one to start creating content.
                     </DialogDescription>
                   </div>
                 </DialogHeader>
@@ -170,8 +170,8 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                       />
                     </div>
                     <div className="text-left">
-                      <div className="font-semibold">Create Workspace</div>
-                      <div className="text-xs text-[#171717]/60 font-normal">Start fresh with your own team</div>
+<div className="font-semibold">Create Organization</div>
+                    <div className="text-xs text-[#171717]/60 font-normal">Start fresh with your own team</div>
                     </div>
                   </Button>
                   <Button 
@@ -183,7 +183,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                       <Users className="size-5 text-[#dbdbdb]" />
                     </div>
                     <div className="text-left">
-                      <div className="font-semibold text-[#dbdbdb]">Join Workspace</div>
+                      <div className="font-semibold text-[#dbdbdb]">Join Organization</div>
                       <div className="text-xs text-[#dbdbdb]/60 font-normal">You've been invited to a team</div>
                     </div>
                   </Button>
@@ -221,15 +221,15 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     </div>
                   </div>
                   <div className="space-y-1 text-center">
-                    <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Create Workspace</DialogTitle>
+                    <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Create Organization</DialogTitle>
                     <DialogDescription className="text-[#dbdbdb]/60">
-                      Give your workspace a name to get started.
+                      Give your organization a name to get started.
                     </DialogDescription>
                   </div>
                 </DialogHeader>
                 <div className="grid gap-4 py-6">
                   <div className="space-y-2">
-                    <Label htmlFor="name" className="text-sm font-semibold ml-1 text-[#dbdbdb]">Workspace Name</Label>
+                    <Label htmlFor="name" className="text-sm font-semibold ml-1 text-[#dbdbdb]">Organization Name</Label>
                     <Input
                       id="name"
                       placeholder="Acme Content"
@@ -247,7 +247,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
                     disabled={creating || !name}
                   >
-                    {creating ? "Creating..." : "Create Workspace"}
+                    {creating ? "Creating..." : "Create Organization"}
                   </Button>
                 </div>
               </form>
@@ -269,7 +269,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     </div>
                   </div>
                   <div className="space-y-1 text-center">
-                    <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Join Workspace</DialogTitle>
+                    <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Join Organization</DialogTitle>
                     <DialogDescription className="text-[#dbdbdb]/60">
                       Ask your team admin to send you an invite link, or enter your invite code below.
                     </DialogDescription>
@@ -289,7 +289,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="rounded-xl bg-zinc-900/50 p-4 border border-zinc-700">
                     <p className="text-xs text-[#dbdbdb]/60 leading-relaxed">
-                      <strong className="text-[#dbdbdb]">Don't have an invite?</strong> Ask your workspace admin to invite you from their Settings page. You'll receive an email with a link to join.
+                      <strong className="text-[#dbdbdb]">Don't have an invite?</strong> Ask your organization admin to invite you from their Settings page. You'll receive an email with a link to join.
                     </p>
                   </div>
                 </div>
@@ -299,7 +299,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
                     disabled={creating || !inviteCode}
                   >
-                    {creating ? "Joining..." : "Join Workspace"}
+                    {creating ? "Joining..." : "Join Organization"}
                   </Button>
                   <Button 
                     type="button"
@@ -307,7 +307,7 @@ export function OrganizationGuard({ children }: { children: React.ReactNode }) {
                     onClick={() => setView('create')}
                     className="w-full h-11 text-[#dbdbdb]/60 hover:text-[#dbdbdb] hover:bg-zinc-700 transition-all font-medium rounded-xl"
                   >
-                    Or create your own workspace
+                    Or create your own organization
                   </Button>
                 </div>
               </form>

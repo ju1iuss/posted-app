@@ -19,6 +19,7 @@ export const MAX_FONT_SIZE = 200
 export const DEFAULT_FONT_SIZE = 48
 
 export const MIN_STROKE_WIDTH = 0
-export const MAX_STROKE_WIDTH = 10
+export const MAX_STROKE_WIDTH = 20
+export const DEFAULT_STROKE_WIDTH = 8
 
 export const MAX_TEXT_LAYERS = 5

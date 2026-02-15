@@ -206,30 +206,28 @@ export function DraggableLayer({
     const fontSize = (layer.font_size || 48) * scaleFactor
     const strokeWidth = (layer.stroke_width || 0) * scaleFactor
     
+    const hasStroke = layer.stroke_width && layer.stroke_width > 0 && layer.stroke_color
+
     const textStyle: React.CSSProperties = {
-      fontFamily: layer.font_family || 'TikTok Sans',
+      fontFamily: `'TikTok Sans', ${layer.font_family || 'TikTok Sans'}, sans-serif`,
       fontSize: `${fontSize}px`,
       lineHeight: 1.2,
-      fontWeight: layer.font_weight || 'bold',
+      fontWeight: layer.font_weight === 'black' ? 900 : (layer.font_weight || 'bold'),
       color: layer.text_color || '#ffffff',
       textAlign: (layer.text_align || 'center') as 'left' | 'center' | 'right',
       width: '100%',
       wordWrap: 'break-word',
       whiteSpace: 'pre-wrap',
-      textShadow: layer.stroke_width && layer.stroke_width > 0 && layer.stroke_color
-        ? `
-          -${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
-          ${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
-          -${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color},
-          ${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color}
-        `
-        : 'none',
+      WebkitTextStroke: hasStroke
+        ? `${strokeWidth}px ${layer.stroke_color}`
+        : undefined,
+      paintOrder: hasStroke ? 'stroke fill' : undefined,
     }
 
     const bgStyle: React.CSSProperties = layer.background_color ? {
       backgroundColor: layer.background_color,
       padding: `${6 * scaleFactor}px ${12 * scaleFactor}px`,
-      borderRadius: `${8 * scaleFactor}px`,
+      borderRadius: `${16 * scaleFactor}px`,
       display: 'inline-block',
     } : {}
 
@@ -266,9 +264,9 @@ export function DraggableLayer({
               }}
               className="w-full bg-zinc-800/95 text-[#dbdbdb] rounded-md shadow-lg border-2 border-[#ddfc7b] focus:outline-none"
               style={{
-                fontFamily: layer.font_family || 'TikTok Sans',
+                fontFamily: `'TikTok Sans', ${layer.font_family || 'TikTok Sans'}, sans-serif`,
                 fontSize: `${Math.max(fontSize, 14)}px`,
-                fontWeight: layer.font_weight || 'bold',
+                fontWeight: layer.font_weight === 'black' ? 900 : (layer.font_weight || 'bold'),
                 textAlign: (layer.text_align || 'center') as 'left' | 'center' | 'right',
                 padding: `${6 * scaleFactor}px ${10 * scaleFactor}px`,
               }}

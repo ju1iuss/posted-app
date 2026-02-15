@@ -3,53 +3,48 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Mail, Lock, Eye, EyeOff } from "lucide-react"
+import { UserPlus, Eye, EyeOff } from "lucide-react"
 import { toast } from "sonner"
 
-export default function LoginPage() {
+export default function SignupPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [mode, setMode] = useState<"password" | "magic-link">("password")
-  const router = useRouter()
   const supabase = createClient()
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters")
+      return
+    }
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match")
+      return
+    }
+
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signUp({
       email,
       password,
-    })
-    setLoading(false)
-    if (error) {
-      toast.error(error.message)
-    } else {
-      router.push("/")
-      router.refresh()
-    }
-  }
-
-  const handleMagicLinkLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
       options: {
         emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
     setLoading(false)
+
     if (error) {
       toast.error(error.message)
     } else {
-      toast.success("Check your email for the login link!")
+      toast.success("Check your email to confirm your account!")
     }
   }
 
@@ -80,9 +75,9 @@ export default function LoginPage() {
             </div>
           </div>
           <div className="space-y-1 text-center">
-            <CardTitle className="text-2xl font-bold tracking-tight text-[#dbdbdb]">Welcome back</CardTitle>
+            <CardTitle className="text-2xl font-bold tracking-tight text-[#dbdbdb]">Create an account</CardTitle>
             <CardDescription className="text-[#dbdbdb]/60">
-              Login to your account to start creating
+              Sign up to get started with Posted
             </CardDescription>
           </div>
         </CardHeader>
@@ -122,54 +117,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {mode === "password" ? (
-            <form onSubmit={handlePasswordLogin} className="space-y-4">
-              <div className="space-y-3">
-                <Input
-                  type="email"
-                  placeholder="name@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-[#dbdbdb] focus:ring-[#ddfc7b]"
-                />
-                <div className="relative">
-                  <Input
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-[#dbdbdb] focus:ring-[#ddfc7b] pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#dbdbdb]/40 hover:text-[#dbdbdb]/70 transition-colors"
-                  >
-                    {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-                  </button>
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <Link
-                  href="/forgot-password"
-                  className="text-xs text-[#dbdbdb]/60 hover:text-[#ddfc7b] transition-colors"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Button 
-                type="submit" 
-                className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
-                disabled={loading}
-              >
-                {loading ? "Signing in..." : "Sign in"}
-                <Lock className="ml-2 size-4" />
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleMagicLinkLogin} className="space-y-4">
+          <form onSubmit={handleSignup} className="space-y-4">
+            <div className="space-y-3">
               <Input
                 type="email"
                 placeholder="name@example.com"
@@ -178,30 +127,49 @@ export default function LoginPage() {
                 required
                 className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-[#dbdbdb] focus:ring-[#ddfc7b]"
               />
-              <Button 
-                type="submit" 
-                className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
-                disabled={loading}
-              >
-                {loading ? "Sending link..." : "Send magic link"}
-                <Mail className="ml-2 size-4" />
-              </Button>
-            </form>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setMode(mode === "password" ? "magic-link" : "password")}
-            className="w-full text-center text-xs text-[#dbdbdb]/60 hover:text-[#ddfc7b] transition-colors"
-          >
-            {mode === "password" ? "Use magic link instead" : "Use password instead"}
-          </button>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Password (min. 6 characters)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-[#dbdbdb] focus:ring-[#ddfc7b] pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#dbdbdb]/40 hover:text-[#dbdbdb]/70 transition-colors"
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+              <Input
+                type={showPassword ? "text" : "password"}
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={6}
+                className="h-11 rounded-xl border-zinc-700 bg-zinc-900 text-[#dbdbdb] focus:ring-[#ddfc7b]"
+              />
+            </div>
+            <Button 
+              type="submit" 
+              className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
+              disabled={loading}
+            >
+              {loading ? "Creating account..." : "Create account"}
+              <UserPlus className="ml-2 size-4" />
+            </Button>
+          </form>
         </CardContent>
         <CardFooter className="flex flex-col items-center gap-3 border-t border-zinc-700 mt-4 py-6">
           <p className="text-sm text-[#dbdbdb]/60">
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="text-[#ddfc7b] hover:text-[#ddfc7b]/80 font-medium transition-colors">
-              Sign up
+            Already have an account?{" "}
+            <Link href="/login" className="text-[#ddfc7b] hover:text-[#ddfc7b]/80 font-medium transition-colors">
+              Sign in
             </Link>
           </p>
           <p className="text-xs text-[#dbdbdb]/40 text-center px-4">

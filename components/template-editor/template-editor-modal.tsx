@@ -574,6 +574,19 @@ export function TemplateEditorModal({
                     }}
                     onUpdateLayer={updateLayer}
                     onDeleteLayer={deleteLayer}
+                    onDuplicateLayer={(layerId) => {
+                      const layer = currentLayers.find(l => l.id === layerId)
+                      if (!layer || !currentSlide?.id) return
+                      if (layer.type === 'text' && currentLayers.filter(l => l.type === 'text').length >= 10) {
+                        toast.error('Maximum 10 text layers per slide')
+                        return
+                      }
+                      const { id, ...rest } = layer
+                      addLayer(currentSlide.id, {
+                        ...rest,
+                        position: currentLayers.length
+                      })
+                    }}
                     onReorderLayers={(layerIds) => {
                       if (!currentSlide?.id) return
                       dispatch({ type: 'REORDER_LAYERS', slideId: currentSlide.id, layerIds })

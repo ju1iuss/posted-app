@@ -266,6 +266,7 @@ function TemplatesPageContent() {
               x: l.x,
               y: l.y,
               width: l.width,
+              height: l.height,
               text_content: l.text_content,
               font_family: l.font_family,
               font_size: l.font_size,
@@ -277,7 +278,8 @@ function TemplatesPageContent() {
               stroke_width: l.stroke_width,
               image_id: l.image_id,
               image_collection_id: l.image_collection_id,
-              image_source_type: l.image_source_type
+              image_source_type: l.image_source_type,
+              is_fixed: l.is_fixed
             }))
 
             await supabase.from('template_layers').insert(layersToInsert)

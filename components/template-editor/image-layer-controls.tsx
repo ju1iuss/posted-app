@@ -28,6 +28,8 @@ interface ImageLayerControlsProps {
 export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }: ImageLayerControlsProps) {
   const [collections, setCollections] = useState<any[]>([])
   const [images, setImages] = useState<any[]>([])
+  const [previewImages, setPreviewImages] = useState<any[]>([])
+  const [previewTotal, setPreviewTotal] = useState(0)
   const [expandedImage, setExpandedImage] = useState<string | null>(null)
   const supabase = useMemo(() => createClient(), [])
 
@@ -57,6 +59,32 @@ export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }
       }
     }
     loadImages()
+  }, [layer.image_collection_id, layer.image_source_type, supabase])
+
+  // Load preview images for collection_random
+  useEffect(() => {
+    async function loadPreview() {
+      if (layer.image_source_type === 'collection_random' && layer.image_collection_id) {
+        const [{ data }, { count }] = await Promise.all([
+          supabase
+            .from('collection_images')
+            .select('images(*)')
+            .eq('collection_id', layer.image_collection_id)
+            .order('position')
+            .limit(4),
+          supabase
+            .from('collection_images')
+            .select('*', { count: 'exact', head: true })
+            .eq('collection_id', layer.image_collection_id)
+        ])
+        setPreviewImages(data?.map((ci: any) => ci.images).filter(Boolean) || [])
+        setPreviewTotal(count || 0)
+      } else {
+        setPreviewImages([])
+        setPreviewTotal(0)
+      }
+    }
+    loadPreview()
   }, [layer.image_collection_id, layer.image_source_type, supabase])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -141,24 +169,55 @@ export function ImageLayerControls({ layer, onUpdate, organizationId, readOnly }
       </div>
 
       {layer.image_source_type === 'collection_random' && (
-        <div className="space-y-1">
-          <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Collection</Label>
-          <Select
-            value={layer.image_collection_id || ''}
-            onValueChange={(val) => onUpdate({ image_collection_id: val })}
-            disabled={readOnly}
-          >
-            <SelectTrigger className="h-7 text-[11px] font-bold bg-zinc-900 border-zinc-700 text-[#dbdbdb]">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent className="rounded-lg bg-zinc-800 border-zinc-700">
-              {collections.map((collection) => (
-                <SelectItem key={collection.id} value={collection.id} className="text-[11px] text-[#dbdbdb]">
-                  {collection.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Collection</Label>
+            <Select
+              value={layer.image_collection_id || ''}
+              onValueChange={(val) => onUpdate({ image_collection_id: val })}
+              disabled={readOnly}
+            >
+              <SelectTrigger className="h-7 text-[11px] font-bold bg-zinc-900 border-zinc-700 text-[#dbdbdb]">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent className="rounded-lg bg-zinc-800 border-zinc-700">
+                {collections.map((collection) => (
+                  <SelectItem key={collection.id} value={collection.id} className="text-[11px] text-[#dbdbdb]">
+                    {collection.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Collection preview */}
+          {layer.image_collection_id && previewImages.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/40">Preview</Label>
+                <span className="text-[9px] font-bold text-[#dbdbdb]/30">{previewTotal} image{previewTotal !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="grid grid-cols-4 gap-1 p-1 bg-zinc-900/50 rounded-lg border border-zinc-800">
+                {previewImages.map((img) => (
+                  <div key={img.id} className="relative aspect-square rounded overflow-hidden">
+                    {img.url ? (
+                      <Image
+                        src={img.url}
+                        alt={img.filename || 'Preview'}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                        <ImageIcon className="size-3 text-[#dbdbdb]/30" />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

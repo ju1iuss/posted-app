@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -23,7 +23,11 @@ import {
   Loader2,
   Check,
   CheckCircle2,
-  Trash2
+  Trash2,
+  CheckSquare,
+  Square,
+  X,
+  Minus
 } from "lucide-react"
 import Image from "next/image"
 import { 
@@ -105,6 +109,12 @@ export default function AccountPage() {
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false)
   const [showDeleteAccountDialog, setShowDeleteAccountDialog] = useState(false)
   const [deletingAccount, setDeletingAccount] = useState(false)
+  const [bulkCount, setBulkCount] = useState(1)
+  const [showNewPostPopover, setShowNewPostPopover] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [bulkExporting, setBulkExporting] = useState(false)
   
   const supabase = useMemo(() => createClient(), [])
 
@@ -379,29 +389,22 @@ export default function AccountPage() {
     return views.toString()
   }
 
-  const handleGeneratePost = async () => {
-    // Check credits
+  const handleGenerateSinglePost = async (): Promise<boolean> => {
     const currentCredits = (account?.organizations as any)?.credits ?? 0
     if (currentCredits <= 0) {
       setShowCreditModal(true)
-      return
+      return false
     }
 
     if (!account?.template_id) {
       toast.error('Please select a template first')
       setShowTemplateModal(true)
-      return
+      return false
     }
 
-    // Ensure the latest prompt is saved to the database before generating (even if empty)
-    if (account.prompt !== undefined) {
-      await updateAccountField('prompt', account.prompt || '')
-    }
+    const tempId = `pending-${Date.now()}-${Math.random()}`
 
-    const tempId = `pending-${Date.now()}`
-    setPendingPostId(tempId)
-
-    // Optimistically update credits immediately (before API call)
+    // Optimistically update credits
     const newCredits = currentCredits - 1
     window.dispatchEvent(new CustomEvent('credits-updated', { 
       detail: { credits: newCredits, organizationId: account.organization_id } 
@@ -411,7 +414,6 @@ export default function AccountPage() {
       organizations: { ...prev.organizations, credits: newCredits }
     }))
 
-    // Add loading skeleton to posts
     setPosts(prev => [{
       id: tempId,
       thumbnail: null,
@@ -424,9 +426,7 @@ export default function AccountPage() {
     try {
       const response = await fetch('/api/generate-post', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           accountId: accountId,
           templateId: account.template_id,
@@ -438,7 +438,6 @@ export default function AccountPage() {
 
       if (!response.ok) {
         if (response.status === 402) {
-          // Revert credit deduction on insufficient credits error
           window.dispatchEvent(new CustomEvent('credits-updated', { 
             detail: { credits: currentCredits, organizationId: account.organization_id } 
           }))
@@ -447,33 +446,23 @@ export default function AccountPage() {
             organizations: { ...prev.organizations, credits: currentCredits }
           }))
           setShowCreditModal(true)
-          // Remove loading skeleton
           setPosts(prev => prev.filter(p => p.id !== tempId))
-          setPendingPostId(null)
-          return
+          return false
         }
         throw new Error(data.error || 'Failed to generate post')
       }
 
-      // Fetch the new post with thumbnail
       const { data: newPostData, error: postError } = await supabase
         .from('posts')
         .select('*')
         .eq('id', data.post.id)
         .single()
 
-      if (postError) {
-        throw postError
-      }
+      if (postError) throw postError
 
-      // Fetch thumbnail if available
       const { data: postImagesData } = await supabase
         .from('post_images')
-        .select(`
-          post_id,
-          position,
-          images (url, storage_path)
-        `)
+        .select(`post_id, position, images (url, storage_path)`)
         .eq('post_id', data.post.id)
         .order('position', { ascending: true })
         .limit(1)
@@ -483,7 +472,6 @@ export default function AccountPage() {
       const metrics = (newPostData.metrics as any) || {}
       const views = metrics.views || 0
 
-      // Replace loading skeleton with actual post in place (smooth transition)
       const newPost = {
         id: newPostData.id,
         thumbnail,
@@ -497,7 +485,6 @@ export default function AccountPage() {
       }
       setPosts(prev => prev.map(p => p.id === tempId ? newPost : p))
 
-      // Sync credits from server response (in case of any discrepancy)
       if (typeof data.newCredits === 'number') {
         window.dispatchEvent(new CustomEvent('credits-updated', { 
           detail: { credits: data.newCredits, organizationId: account.organization_id } 
@@ -508,10 +495,9 @@ export default function AccountPage() {
         }))
       }
 
-      toast.success('Post generated successfully!')
+      return true
     } catch (error: any) {
       console.error('Error generating post:', error)
-      // Revert credit deduction on error
       window.dispatchEvent(new CustomEvent('credits-updated', { 
         detail: { credits: currentCredits, organizationId: account.organization_id } 
       }))
@@ -519,11 +505,111 @@ export default function AccountPage() {
         ...prev,
         organizations: { ...prev.organizations, credits: currentCredits }
       }))
-      // Remove loading skeleton
       setPosts(prev => prev.filter(p => p.id !== tempId))
       toast.error(error.message || 'Failed to generate post')
+      return false
+    }
+  }
+
+  const handleGeneratePost = async (count: number = 1) => {
+    if (!account?.template_id) {
+      toast.error('Please select a template first')
+      setShowTemplateModal(true)
+      return
+    }
+
+    // Ensure prompt is saved
+    if (account.prompt !== undefined) {
+      await updateAccountField('prompt', account.prompt || '')
+    }
+
+    setShowNewPostPopover(false)
+    setGeneratingPost(true)
+
+    if (count === 1) {
+      await handleGenerateSinglePost()
+    } else {
+      toast.info(`Generating ${count} posts...`)
+      let successCount = 0
+      for (let i = 0; i < count; i++) {
+        const ok = await handleGenerateSinglePost()
+        if (ok) successCount++
+        else break // stop on credit/error failure
+      }
+      if (successCount > 1) {
+        toast.success(`${successCount} posts generated!`)
+      } else if (successCount === 1) {
+        toast.success('Post generated successfully!')
+      }
+    }
+    
+    setGeneratingPost(false)
+  }
+
+  // Bulk actions
+  const togglePostSelection = useCallback((postId: string) => {
+    setSelectedPostIds(prev => {
+      const next = new Set(prev)
+      if (next.has(postId)) next.delete(postId)
+      else next.add(postId)
+      return next
+    })
+  }, [])
+
+  const selectablePostIds = useMemo(() => 
+    posts.filter(p => !p.isLoading).map(p => p.id),
+    [posts]
+  )
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedPostIds.size === selectablePostIds.length) {
+      setSelectedPostIds(new Set())
+    } else {
+      setSelectedPostIds(new Set(selectablePostIds))
+    }
+  }, [selectedPostIds.size, selectablePostIds])
+
+  const exitSelectMode = useCallback(() => {
+    setSelectMode(false)
+    setSelectedPostIds(new Set())
+  }, [])
+
+  const handleBulkDelete = async () => {
+    if (selectedPostIds.size === 0) return
+    setBulkDeleting(true)
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .delete()
+        .in('id', Array.from(selectedPostIds))
+
+      if (error) throw error
+
+      setPosts(prev => prev.filter(p => !selectedPostIds.has(p.id)))
+      toast.success(`${selectedPostIds.size} post(s) deleted`)
+      exitSelectMode()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete posts')
     } finally {
-      setPendingPostId(null)
+      setBulkDeleting(false)
+    }
+  }
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedPostIds.size === 0) return
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .update({ status: newStatus })
+        .in('id', Array.from(selectedPostIds))
+
+      if (error) throw error
+
+      setPosts(prev => prev.map(p => selectedPostIds.has(p.id) ? { ...p, status: newStatus } : p))
+      toast.success(`${selectedPostIds.size} post(s) set to ${newStatus}`)
+      exitSelectMode()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update status')
     }
   }
 
@@ -882,18 +968,139 @@ export default function AccountPage() {
           </button>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectMode && (
+          <div className="sticky top-0 z-30 bg-zinc-900/95 backdrop-blur-md border-b border-zinc-700 -mx-4 px-4 py-2 flex items-center gap-2 mb-0">
+            <button
+              onClick={exitSelectMode}
+              className="size-7 rounded-md bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center text-[#dbdbdb]/60 hover:text-[#dbdbdb] transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+            <button
+              onClick={toggleSelectAll}
+              className="h-7 px-2.5 rounded-md bg-zinc-800 hover:bg-zinc-700 flex items-center gap-1.5 text-[10px] font-bold text-[#dbdbdb] transition-colors uppercase tracking-wider"
+            >
+              {selectedPostIds.size === selectablePostIds.length ? (
+                <><CheckSquare className="size-3.5" /> Deselect All</>
+              ) : (
+                <><Square className="size-3.5" /> Select All</>
+              )}
+            </button>
+            <span className="text-[10px] font-bold text-[#dbdbdb]/60 uppercase tracking-wider">
+              {selectedPostIds.size} selected
+            </span>
+            <div className="flex-1" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  disabled={selectedPostIds.size === 0}
+                  className="h-7 px-2.5 rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 flex items-center gap-1.5 text-[10px] font-bold text-[#dbdbdb] transition-colors uppercase tracking-wider"
+                >
+                  Status <ChevronDown className="size-3" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-36 rounded-xl bg-zinc-800 border-zinc-700">
+                {['draft', 'ready', 'exported', 'posted'].map(s => (
+                  <DropdownMenuItem
+                    key={s}
+                    onClick={() => handleBulkStatusChange(s)}
+                    className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700 capitalize"
+                  >
+                    {s}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              disabled={selectedPostIds.size === 0 || bulkDeleting}
+              onClick={handleBulkDelete}
+              className="h-7 px-2.5 rounded-md bg-red-600/20 hover:bg-red-600/40 disabled:opacity-40 flex items-center gap-1.5 text-[10px] font-bold text-red-400 transition-colors uppercase tracking-wider"
+            >
+              {bulkDeleting ? <Loader2 className="size-3 animate-spin" /> : <Trash2 className="size-3" />}
+              Delete
+            </button>
+          </div>
+        )}
+
         {/* Video Grid */}
         <div className="grid grid-cols-3 gap-0">
           {/* Create Post Card */}
-          <div 
-            onClick={handleGeneratePost}
-            className="group relative aspect-[3/4] cursor-pointer overflow-hidden bg-[#171717] border border-zinc-700 hover:border-zinc-600 transition-all flex flex-col items-center justify-center gap-2 hover:bg-zinc-900"
-          >
-            <div className="size-8 rounded-full bg-zinc-800 shadow-sm flex items-center justify-center text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors">
-              <Plus className="size-5" />
+          <Popover open={showNewPostPopover} onOpenChange={setShowNewPostPopover}>
+            <PopoverTrigger asChild>
+              <div 
+                className="group relative aspect-[3/4] cursor-pointer overflow-hidden bg-[#171717] border border-zinc-700 hover:border-zinc-600 transition-all flex flex-col items-center justify-center gap-2 hover:bg-zinc-900"
+              >
+                {generatingPost ? (
+                  <>
+                    <Loader2 className="size-6 animate-spin text-[#dbdbdb]/60" />
+                    <span className="text-xs font-bold text-[#dbdbdb]/60 uppercase tracking-wider">Generating...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="size-8 rounded-full bg-zinc-800 shadow-sm flex items-center justify-center text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors">
+                      <Plus className="size-5" />
+                    </div>
+                    <span className="text-xs font-bold text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors uppercase tracking-wider">New Post</span>
+                  </>
+                )}
+              </div>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-3 rounded-2xl bg-zinc-800 border-zinc-700" align="start">
+              <div className="space-y-3">
+                <h4 className="text-sm font-bold text-[#dbdbdb]">Generate Posts</h4>
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-[#dbdbdb]/60">Number of posts</Label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setBulkCount(Math.max(1, bulkCount - 1))}
+                      className="size-8 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-[#dbdbdb] hover:bg-zinc-700 transition-colors"
+                    >
+                      <Minus className="size-4" />
+                    </button>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={bulkCount}
+                      onChange={(e) => setBulkCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
+                      className="h-8 text-center text-sm font-bold bg-zinc-900 border-zinc-700 text-[#dbdbdb] w-14 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      onClick={() => setBulkCount(Math.min(20, bulkCount + 1))}
+                      className="size-8 rounded-lg bg-zinc-900 border border-zinc-700 flex items-center justify-center text-[#dbdbdb] hover:bg-zinc-700 transition-colors"
+                    >
+                      <Plus className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                <Button
+                  onClick={() => handleGeneratePost(bulkCount)}
+                  disabled={generatingPost}
+                  className="w-full bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 font-bold text-sm h-9"
+                >
+                  {generatingPost ? (
+                    <><Loader2 className="size-4 mr-2 animate-spin" /> Generating...</>
+                  ) : (
+                    <>Generate {bulkCount > 1 ? `${bulkCount} Posts` : 'Post'}</>
+                  )}
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
+
+          {/* Select Mode Toggle - small card */}
+          {!selectMode && posts.filter(p => !p.isLoading).length > 0 && (
+            <div 
+              onClick={() => setSelectMode(true)}
+              className="group relative aspect-[3/4] cursor-pointer overflow-hidden bg-[#171717] border border-zinc-700 hover:border-zinc-600 transition-all flex flex-col items-center justify-center gap-2 hover:bg-zinc-900"
+            >
+              <div className="size-8 rounded-full bg-zinc-800 shadow-sm flex items-center justify-center text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors">
+                <CheckSquare className="size-5" />
+              </div>
+              <span className="text-xs font-bold text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors uppercase tracking-wider">Select</span>
             </div>
-            <span className="text-xs font-bold text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors uppercase tracking-wider">New Post</span>
-          </div>
+          )}
 
           {/* Post Cards */}
           {posts.map((post) => (
@@ -906,6 +1113,71 @@ export default function AccountPage() {
                   <div className="size-8 border-2 border-[#dbdbdb]/40 border-t-transparent rounded-full animate-spin" />
                   <span className="text-[#dbdbdb]/60 text-[10px] font-bold uppercase tracking-tighter">Generating...</span>
                 </div>
+              </div>
+            ) : selectMode ? (
+              <div
+                key={post.id}
+                onClick={() => togglePostSelection(post.id)}
+                className={cn(
+                  "group relative aspect-[3/4] overflow-hidden cursor-pointer transition-all border",
+                  selectedPostIds.has(post.id)
+                    ? "border-[#ddfc7b] ring-2 ring-[#ddfc7b]/30"
+                    : "border-zinc-800 hover:border-zinc-700"
+                )}
+              >
+                {/* Selection checkbox overlay */}
+                <div className={cn(
+                  "absolute top-2 left-2 z-20 size-6 rounded-md flex items-center justify-center transition-all",
+                  selectedPostIds.has(post.id)
+                    ? "bg-[#ddfc7b] text-[#171717]"
+                    : "bg-black/50 backdrop-blur-sm text-white/60"
+                )}>
+                  {selectedPostIds.has(post.id) ? (
+                    <Check className="size-4" />
+                  ) : (
+                    <Square className="size-4" />
+                  )}
+                </div>
+                {/* Render actual card content */}
+                {post.type === 'carousel' && post.content ? (
+                  <div className="w-full h-full pointer-events-none">
+                    <PostCarouselCard
+                      postId={post.id}
+                      postContent={post.content}
+                      status={post.status}
+                      title={post.title}
+                      caption={post.caption}
+                    />
+                  </div>
+                ) : (
+                  <>
+                    {post.status === 'posted' && (
+                      <div className="absolute top-2 right-2 z-10">
+                        <Badge className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 backdrop-blur-md border-none bg-green-500/20 text-green-400">
+                          <CheckCircle2 className="size-2.5 mr-1" />
+                          Posted
+                        </Badge>
+                      </div>
+                    )}
+                    {post.thumbnail ? (
+                      <Image
+                        src={post.thumbnail}
+                        alt={`Post ${post.id}`}
+                        width={300}
+                        height={400}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                        <span className="text-[#dbdbdb]/60 text-[10px] font-bold uppercase tracking-tighter">No image</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                {/* Dim overlay when not selected */}
+                {!selectedPostIds.has(post.id) && (
+                  <div className="absolute inset-0 bg-black/20 pointer-events-none" />
+                )}
               </div>
             ) : post.type === 'carousel' && post.content ? (
               <PostCarouselCard
@@ -931,19 +1203,11 @@ export default function AccountPage() {
               <div
                 key={post.id}
                 onClick={() => {
-                  // Don't open preview if status is "posted"
-                  if (post.status === 'posted') {
-                    return
-                  }
                   setSelectedPost(post)
                   setShowPostModal(true)
                 }}
-                className={cn(
-                  "group relative aspect-[3/4] overflow-hidden bg-muted border border-zinc-800 hover:border-zinc-700 transition-colors",
-                  post.status === 'posted' ? 'cursor-default' : 'cursor-pointer'
-                )}
+                className="group relative aspect-[3/4] overflow-hidden bg-muted border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer"
               >
-                {/* Status badge - only show if posted */}
                 {post.status === 'posted' && (
                   <div className="absolute top-2 left-2 z-20">
                     <Badge 

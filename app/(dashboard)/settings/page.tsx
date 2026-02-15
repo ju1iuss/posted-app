@@ -153,7 +153,7 @@ export default function SettingsPage() {
     <div className="space-y-8 max-w-4xl mx-auto pb-10">
       <div>
         <h1 className="text-3xl font-black text-white tracking-tight">Settings</h1>
-        <p className="text-zinc-400 text-sm mt-1">Manage your organization and workspace preferences.</p>
+        <p className="text-zinc-400 text-sm mt-1">Manage your organization preferences.</p>
       </div>
 
       <div className="grid gap-6">
@@ -164,7 +164,7 @@ export default function SettingsPage() {
               <Building2 className="size-5 text-[#ddfc7b]" />
               Organization Profile
             </CardTitle>
-            <CardDescription className="text-zinc-400">Configure your workspace identity.</CardDescription>
+            <CardDescription className="text-zinc-400">Configure your organization identity.</CardDescription>
           </CardHeader>
           <CardContent className="pt-8 space-y-6">
             <div className="grid sm:grid-cols-2 gap-6">
@@ -218,7 +218,7 @@ export default function SettingsPage() {
                     <RefreshCcw className={cn("size-4", regenerating && "animate-spin")} />
                   </Button>
                 </div>
-                <p className="text-[10px] text-zinc-500 mt-1">Share this code with your team to let them join this workspace.</p>
+                <p className="text-[10px] text-zinc-500 mt-1">Share this code with your team to let them join this organization.</p>
               </div>
             </div>
 

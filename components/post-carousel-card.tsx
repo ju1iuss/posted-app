@@ -238,9 +238,43 @@ export function PostCarouselCard({
       const postTitle = title || postContent?.title || ''
       const postCaption = caption || postContent?.caption || ''
       
+      // Collect slide text content for slides where text is removed from image
+      const slideTexts: string[] = []
+      for (let i = 0; i < sortedSlides.length; i++) {
+        const slide = sortedSlides[i]
+        const slideLayers = layers[slide.id || ''] || []
+        
+        // Determine which text layers are removed from the image
+        let removedTextLayers: typeof slideLayers = []
+        if (type === 'separate') {
+          // All text removed from all slides
+          removedTextLayers = slideLayers.filter(l => l.type === 'text' && l.text_content)
+        } else if (type === 'first-slide-separate' && i === 0) {
+          // Only dynamic (non-fixed) text removed from first slide
+          removedTextLayers = slideLayers.filter(l => l.type === 'text' && l.text_content && !l.is_fixed)
+        }
+        
+        if (removedTextLayers.length > 0) {
+          slideTexts.push(`SLIDE ${i + 1}:`)
+          removedTextLayers.forEach(l => slideTexts.push(l.text_content!))
+          slideTexts.push('')
+        }
+      }
+
       // Add text file to zip
-      const textContent = `TITLE:\n${postTitle}\n\nCAPTION:\n${postCaption}`
+      let textContent = `TITLE:\n${postTitle}\n\nCAPTION:\n${postCaption}`
+      if (slideTexts.length > 0) {
+        textContent += `\n\nSLIDE TEXT:\n${slideTexts.join('\n')}`
+      }
       zip.file('post-text.txt', textContent)
+
+      // Force-load TikTok Sans fonts before export
+      await Promise.all([
+        document.fonts.load('normal 48px "TikTok Sans"'),
+        document.fonts.load('bold 48px "TikTok Sans"'),
+        document.fonts.load('900 48px "TikTok Sans"'),
+      ])
+      await document.fonts.ready
 
       // Create a hidden container for full-resolution rendering
       const exportContainer = document.createElement('div')
@@ -257,14 +291,15 @@ export function PostCarouselCard({
         const slide = sortedSlides[i]
         const slideLayers = layers[slide.id || ''] || []
         
-        // Determine if we should include text for this slide
-        const hideText = type === 'separate' || 
-          (type === 'first-slide-separate' && i === 0)
-        
         // Filter layers based on export type
-        const exportLayers = hideText 
-          ? slideLayers.filter(l => l.type !== 'text')
-          : slideLayers
+        let exportLayers = slideLayers
+        if (type === 'separate') {
+          // Remove ALL text from all slides
+          exportLayers = slideLayers.filter(l => l.type !== 'text')
+        } else if (type === 'first-slide-separate' && i === 0) {
+          // Remove only dynamic (non-fixed) text from first slide; keep fixed text
+          exportLayers = slideLayers.filter(l => !(l.type === 'text' && !l.is_fixed))
+        }
 
         // Create the slide element
         const slideElement = document.createElement('div')
@@ -338,26 +373,24 @@ export function PostCarouselCard({
             // Text layer styling
             const fontSize = layer.font_size || 48
             const strokeWidth = layer.stroke_width || 0
+            const rawWeight = layer.font_weight || 'bold'
+            const fontWeight = rawWeight === 'black' ? '900' : rawWeight
             
             const textDiv = document.createElement('div')
-            textDiv.style.fontFamily = `${layer.font_family || 'TikTok Sans'}, sans-serif`
+            textDiv.style.fontFamily = `'TikTok Sans', ${layer.font_family || 'TikTok Sans'}, sans-serif`
             textDiv.style.fontSize = `${fontSize}px`
             textDiv.style.lineHeight = '1.2'
-            textDiv.style.fontWeight = String(layer.font_weight || 'bold')
+            textDiv.style.fontWeight = fontWeight
             textDiv.style.color = layer.text_color || '#ffffff'
             textDiv.style.textAlign = layer.text_align || 'center'
             textDiv.style.width = '100%'
             textDiv.style.wordWrap = 'break-word'
             textDiv.style.whiteSpace = 'pre-wrap'
             
-            // Text shadow/stroke
+            // Use -webkit-text-stroke for clean border rendering
             if (strokeWidth > 0 && layer.stroke_color) {
-              textDiv.style.textShadow = `
-                -${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
-                ${strokeWidth}px -${strokeWidth}px 0 ${layer.stroke_color},
-                -${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color},
-                ${strokeWidth}px ${strokeWidth}px 0 ${layer.stroke_color}
-              `
+              textDiv.style.setProperty('-webkit-text-stroke', `${strokeWidth}px ${layer.stroke_color}`)
+              textDiv.style.paintOrder = 'stroke fill'
             }
             
             // Background color handling
@@ -365,7 +398,7 @@ export function PostCarouselCard({
               const span = document.createElement('span')
               span.style.backgroundColor = layer.background_color
               span.style.padding = '6px 12px'
-              span.style.borderRadius = '8px'
+              span.style.borderRadius = '16px'
               span.style.display = 'inline-block'
               span.innerText = layer.text_content || ''
               textDiv.appendChild(span)
@@ -416,8 +449,9 @@ export function PostCarouselCard({
         exportContainer.innerHTML = ''
         exportContainer.appendChild(slideElement)
         
-        // Wait for rendering and fonts to load
-        await new Promise(resolve => setTimeout(resolve, 300))
+        // Wait for fonts to be ready and rendering to settle
+        await document.fonts.ready
+        await new Promise(resolve => setTimeout(resolve, 500))
         
         // Capture with html2canvas
         const canvas = await html2canvas(slideElement, {
@@ -523,10 +557,6 @@ export function PostCarouselCard({
     if (target.closest('button') || target.closest('[data-dropdown]')) {
       return
     }
-    // Don't open preview if status is "posted"
-    if (status === 'posted') {
-      return
-    }
     onExpand?.()
   }
   
@@ -536,7 +566,7 @@ export function PostCarouselCard({
       className={cn(
         "group relative overflow-hidden transition-all duration-300 animate-in fade-in flex items-center justify-center",
         !hasAspectOverride ? "aspect-[3/4] bg-zinc-900 border border-zinc-800 hover:border-zinc-700" : "w-full h-full bg-transparent",
-        status === 'posted' ? 'cursor-default' : 'cursor-pointer',
+        'cursor-pointer',
         className
       )}
     >

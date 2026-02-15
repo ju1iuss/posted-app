@@ -1,6 +1,6 @@
 "use client"
 
-import { Plus, Trash2, GripVertical, Type, Image as ImageIcon } from 'lucide-react'
+import { Plus, Trash2, GripVertical, Type, Image as ImageIcon, Copy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TemplateLayer } from './types'
 import { TextLayerControls } from './text-layer-controls'
@@ -33,6 +33,7 @@ interface LayerPanelProps {
   onAddImageLayer: () => void
   onUpdateLayer: (layerId: string, updates: Partial<TemplateLayer>) => void
   onDeleteLayer: (layerId: string) => void
+  onDuplicateLayer: (layerId: string) => void
   onReorderLayers: (layerIds: string[]) => void
   selectedLayer?: TemplateLayer
   currentSlide?: any
@@ -47,12 +48,14 @@ function SortableLayerItem({
   selected,
   onSelect,
   onDelete,
+  onDuplicate,
   readOnly
 }: {
   layer: TemplateLayer
   selected: boolean
   onSelect: () => void
   onDelete: () => void
+  onDuplicate: () => void
   readOnly?: boolean
 }) {
   const {
@@ -104,17 +107,31 @@ function SortableLayerItem({
         </div>
       </div>
       {!readOnly && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-red-500 hover:text-red-600"
-          onClick={(e) => {
-            e.stopPropagation()
-            onDelete()
-          }}
-        >
-          <Trash2 className="size-3" />
-        </Button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDuplicate()
+            }}
+            title="Duplicate layer"
+          >
+            <Copy className="size-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-red-500 hover:text-red-600"
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete()
+            }}
+          >
+            <Trash2 className="size-3" />
+          </Button>
+        </div>
       )}
     </div>
   )
@@ -128,6 +145,7 @@ export function LayerPanel({
   onAddImageLayer,
   onUpdateLayer,
   onDeleteLayer,
+  onDuplicateLayer,
   onReorderLayers,
   selectedLayer,
   currentSlide,
@@ -223,6 +241,7 @@ export function LayerPanel({
                       selected={layer.id === selectedLayerId}
                       onSelect={() => onSelectLayer(layer.id || null)}
                       onDelete={() => layer.id && onDeleteLayer(layer.id)}
+                      onDuplicate={() => layer.id && onDuplicateLayer(layer.id)}
                     />
                   ))}
               </div>

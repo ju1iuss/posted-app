@@ -35,7 +35,6 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onC
           </div>
           <div className="flex flex-col text-left overflow-hidden flex-1">
             <span className="truncate text-[13px] font-bold tracking-tight text-[#dbdbdb]">{currentOrg?.name || "Select Org"}</span>
-            <span className="truncate text-[9px] font-black uppercase tracking-widest text-[#dbdbdb]/60 leading-none mt-0.5">{currentOrg?.plan || "Free"}</span>
           </div>
           <ChevronDown className="size-3.5 text-[#dbdbdb]/60 transition-transform duration-300 group-data-[state=open]:rotate-180 flex-shrink-0" />
         </button>
@@ -57,7 +56,6 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onC
               </div>
               <div className="flex flex-col leading-none">
                 <span className="text-[12px] font-bold text-[#dbdbdb]">{org.name}</span>
-                <span className="text-[8px] font-black text-[#dbdbdb]/60 uppercase tracking-wider mt-0.5">{org.plan}</span>
               </div>
               {org.id === currentOrg?.id && (
                 <div className="ml-auto flex size-4 items-center justify-center rounded-full bg-[#ddfc7b]">
@@ -91,7 +89,7 @@ export function OrganizationSelect({ organizations, currentOrg, onOrgChange, onC
           <div className="flex size-6 items-center justify-center rounded-md border border-dashed border-zinc-600">
             <Plus className="size-3" />
           </div>
-          <span className="text-[12px] font-bold">Join Workspace</span>
+          <span className="text-[12px] font-bold">Join Organization</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

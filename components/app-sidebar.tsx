@@ -43,7 +43,9 @@ import {
   X,
   MoreVertical,
   Copy,
-  Trash2
+  Trash2,
+  Pencil,
+  PanelLeftClose
 } from "lucide-react"
 import {
   Sidebar,
@@ -61,6 +63,7 @@ import {
   SidebarMenuSubItem,
   SidebarMenuSubButton,
   SidebarInput,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import {
   DropdownMenu,
@@ -205,7 +208,8 @@ function SortableAccountItem({
   dropPosition,
   onDelete,
   onDuplicate,
-  onStatusChange
+  onStatusChange,
+  onRename
 }: { 
   item: any, 
   isActive: boolean, 
@@ -216,7 +220,8 @@ function SortableAccountItem({
   dropPosition?: 'above' | 'below' | 'inside' | null,
   onDelete?: (accountId: string) => void,
   onDuplicate?: (accountId: string) => void,
-  onStatusChange?: (accountId: string, status: string) => void
+  onStatusChange?: (accountId: string, status: string) => void,
+  onRename?: (accountId: string, name: string) => void
 }) {
   const {
     attributes,
@@ -231,6 +236,8 @@ function SortableAccountItem({
   })
 
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [showRenameDialog, setShowRenameDialog] = useState(false)
+  const [renameValue, setRenameValue] = useState(item.name || '')
   const [showStatusMenu, setShowStatusMenu] = useState(false)
 
   const style = {
@@ -331,6 +338,18 @@ function SortableAccountItem({
                   onClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
+                    setRenameValue(item.name || item.username || '')
+                    setShowRenameDialog(true)
+                  }}
+                  className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
+                >
+                  <Pencil className="size-3" />
+                  <span>Rename</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
                     onDuplicate?.(item.id)
                   }}
                   className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
@@ -354,6 +373,58 @@ function SortableAccountItem({
           </div>
         </SidebarMenuItem>
       </div>
+
+      <Dialog open={showRenameDialog} onOpenChange={(o) => {
+        setShowRenameDialog(o)
+        if (!o) setRenameValue(item.name || item.username || '')
+      }}>
+        <DialogContent className="sm:max-w-[360px] rounded-2xl border-zinc-700 bg-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-[#dbdbdb]">Rename account</DialogTitle>
+            <DialogDescription className="text-[#dbdbdb]/80">
+              Enter a new name for this account.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="h-10 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (renameValue.trim()) {
+                    onRename?.(item.id, renameValue.trim())
+                    setShowRenameDialog(false)
+                  }
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => setShowRenameDialog(false)}
+              className="flex-1 h-10 rounded-xl border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (renameValue.trim()) {
+                  onRename?.(item.id, renameValue.trim())
+                  setShowRenameDialog(false)
+                }
+              }}
+              className="flex-1 h-10 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 font-black rounded-xl"
+              disabled={!renameValue.trim()}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent className="bg-[#171717] border-zinc-700">
@@ -400,7 +471,9 @@ function SortableFolderItem({
   isSortable,
   isDraggingRef,
   isOver,
-  dropPosition
+  dropPosition,
+  onRename,
+  onDelete
 }: {
   id: string,
   brand: any,
@@ -410,7 +483,9 @@ function SortableFolderItem({
   isSortable: boolean,
   isDraggingRef: React.RefObject<boolean>,
   isOver?: boolean,
-  dropPosition?: 'above' | 'below' | 'inside' | null
+  dropPosition?: 'above' | 'below' | 'inside' | null,
+  onRename?: (brandId: string, newName: string) => void,
+  onDelete?: (brandId: string) => void
 }) {
   const {
     attributes,
@@ -424,6 +499,10 @@ function SortableFolderItem({
     disabled: !isSortable
   })
 
+  const [showRenameDialog, setShowRenameDialog] = useState(false)
+  const [renameValue, setRenameValue] = useState(brand.name)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -433,49 +512,181 @@ function SortableFolderItem({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="relative group/folder">
-      <button
-        onClick={(e) => {
-          if (isDraggingRef.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
-          onToggle();
-        }}
-        {...attributes}
-        {...listeners}
-        type="button"
-        className={cn(
-          "w-full h-7 px-2 rounded-md flex items-center gap-1.5 hover:bg-zinc-800 transition-all group",
-          isSortable && "cursor-grab active:cursor-grabbing",
-          isOver && dropPosition === 'inside' && "bg-[#ddfc7b]/15 ring-2 ring-[#ddfc7b]/60"
-        )}
-      >
-        {isExpanded ? (
-          <FolderOpen className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
-        ) : (
-          <Folder className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
-        )}
-        <span className={cn(
-          "font-bold tracking-tight text-[10px] flex-1 text-left truncate",
-          isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/80"
-        )}>
-          {brand.name}
-        </span>
-        <span className="text-[9px] text-[#dbdbdb]/40 font-bold">
-          {childCount}
-        </span>
-        <ChevronRight className={cn(
-          "size-2.5 text-[#dbdbdb]/40 transition-transform duration-200",
-          isExpanded && "rotate-90"
-        )} />
-      </button>
-    </div>
+    <>
+      <div ref={setNodeRef} style={style} className="relative group/folder">
+        <div className="flex items-center gap-1 group-hover/folder:bg-zinc-800/50 rounded-md transition-colors">
+          <button
+            onClick={(e) => {
+              if (isDraggingRef.current) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+              onToggle();
+            }}
+            {...attributes}
+            {...listeners}
+            type="button"
+            className={cn(
+              "flex-1 h-7 px-2 rounded-md flex items-center gap-1.5 hover:bg-transparent transition-all",
+              isSortable && "cursor-grab active:cursor-grabbing",
+              isOver && dropPosition === 'inside' && "bg-[#ddfc7b]/15 ring-2 ring-[#ddfc7b]/60"
+            )}
+          >
+            {isExpanded ? (
+              <FolderOpen className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
+            ) : (
+              <Folder className={cn("size-3", isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/60")} />
+            )}
+            <span className={cn(
+              "font-bold tracking-tight text-[10px] flex-1 text-left truncate",
+              isOver && dropPosition === 'inside' ? "text-[#ddfc7b]" : "text-[#dbdbdb]/80"
+            )}>
+              {brand.name}
+            </span>
+            <span className="text-[9px] text-[#dbdbdb]/40 font-bold">
+              {childCount}
+            </span>
+            <ChevronRight className={cn(
+              "size-2.5 text-[#dbdbdb]/40 transition-transform duration-200",
+              isExpanded && "rotate-90"
+            )} />
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                className="opacity-0 group-hover/folder:opacity-100 h-7 w-6 flex items-center justify-center rounded-md hover:bg-zinc-700 transition-all mr-1"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+              >
+                <MoreVertical className="size-3.5 text-[#dbdbdb]/60" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700">
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setRenameValue(brand.name)
+                  setShowRenameDialog(true)
+                }}
+                className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-[#dbdbdb] cursor-pointer flex items-center gap-2 text-[#dbdbdb]/60 hover:text-[#dbdbdb]"
+              >
+                <Pencil className="size-3" />
+                <span>Rename</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setShowDeleteDialog(true)
+                }}
+                className="text-[11px] font-bold px-2 py-1.5 rounded-sm focus:bg-zinc-700 focus:text-red-500 cursor-pointer flex items-center gap-2 text-red-500/60 hover:text-red-500"
+              >
+                <Trash2 className="size-3" />
+                <span>Delete</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      <Dialog open={showRenameDialog} onOpenChange={(o) => {
+        setShowRenameDialog(o)
+        if (!o) setRenameValue(brand.name)
+      }}>
+        <DialogContent className="sm:max-w-[360px] rounded-2xl border-zinc-700 bg-zinc-800">
+          <DialogHeader>
+            <DialogTitle className="text-[#dbdbdb]">Rename folder</DialogTitle>
+            <DialogDescription className="text-[#dbdbdb]/80">
+              Enter a new name for this folder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="h-10 rounded-lg bg-zinc-900 border-zinc-700 text-[#dbdbdb]"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  if (renameValue.trim()) {
+                    onRename?.(brand.id, renameValue.trim())
+                    setShowRenameDialog(false)
+                  }
+                }
+              }}
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline"
+              onClick={() => setShowRenameDialog(false)}
+              className="flex-1 h-10 rounded-xl border-zinc-700 bg-zinc-800 text-[#dbdbdb] hover:bg-zinc-700"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (renameValue.trim()) {
+                  onRename?.(brand.id, renameValue.trim())
+                  setShowRenameDialog(false)
+                }
+              }}
+              className="flex-1 h-10 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 font-black rounded-xl"
+              disabled={!renameValue.trim()}
+            >
+              Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent className="bg-[#171717] border-zinc-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-[#dbdbdb]">Delete folder</AlertDialogTitle>
+            <AlertDialogDescription className="text-[#dbdbdb]/80">
+              Are you sure you want to delete "{brand.name}"? Accounts in this folder will be moved out. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              className="bg-zinc-800 border-zinc-700 text-[#dbdbdb] hover:bg-zinc-700"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onDelete?.(brand.id)
+                setShowDeleteDialog(false)
+              }}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
 export function AppSidebar() {
+  const { toggleSidebar } = useSidebar()
   const [organizations, setOrganizations] = useState<any[]>([])
   const [currentOrgId, setCurrentOrgId] = useState<string | null>(null)
   const currentOrg = useMemo(() => 
@@ -1029,6 +1240,74 @@ export function AppSidebar() {
     }
   }
 
+  const handleRenameAccount = async (accountId: string, name: string) => {
+    try {
+      const { error } = await supabase
+        .from('accounts')
+        .update({ name })
+        .eq('id', accountId)
+
+      if (error) throw error
+
+      setAccounts(prev => prev.map(a => 
+        a.id === accountId ? { ...a, name } : a
+      ))
+      
+      window.dispatchEvent(new CustomEvent('account-updated', {
+        detail: { id: accountId, name }
+      }))
+      toast.success('Account renamed')
+    } catch (error: any) {
+      console.error('Error renaming account:', error)
+      toast.error(error.message || 'Failed to rename account')
+    }
+  }
+
+  const handleRenameBrand = async (brandId: string, name: string) => {
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .update({ name })
+        .eq('id', brandId)
+
+      if (error) throw error
+
+      setBrands(prev => prev.map(b => 
+        b.id === brandId ? { ...b, name } : b
+      ))
+      toast.success('Folder renamed')
+    } catch (error: any) {
+      console.error('Error renaming folder:', error)
+      toast.error(error.message || 'Failed to rename folder')
+    }
+  }
+
+  const handleDeleteBrand = async (brandId: string) => {
+    try {
+      const { error } = await supabase
+        .from('brands')
+        .delete()
+        .eq('id', brandId)
+
+      if (error) throw error
+
+      setBrands(prev => prev.filter(b => b.id !== brandId))
+      setAccounts(prev => prev.map(a => 
+        a.brand_id === brandId ? { ...a, brand_id: null } : a
+      ))
+      setSidebarOrder(prev => prev.filter(item => item !== `brand:${brandId}`))
+      setExpandedBrands(prev => {
+        const next = new Set(prev)
+        next.delete(brandId)
+        return next
+      })
+      toast.success('Folder deleted')
+    } catch (error: any) {
+      console.error('Error deleting folder:', error)
+      toast.error(error.message || 'Failed to delete folder')
+    }
+  }
+
   const handleStatusChange = async (accountId: string, status: string) => {
     try {
       const { error } = await supabase
@@ -1181,7 +1460,7 @@ export function AppSidebar() {
         .single()
 
       if (existingMember) {
-        throw new Error("You are already a member of this workspace.")
+        throw new Error("You are already a member of this organization.")
       }
 
       // 3. Add user as member
@@ -1213,7 +1492,7 @@ export function AppSidebar() {
       setInviteCode("")
     } catch (error: any) {
       console.error(error)
-      toast.error(error.message || "Failed to join workspace")
+      toast.error(error.message || "Failed to join organization")
     } finally {
       setCreatingOrg(false)
     }
@@ -1264,13 +1543,13 @@ export function AppSidebar() {
         setCurrentOrgId(newOrg.id)
       }
 
-      toast.success("Workspace created successfully!")
+      toast.success("Organization created successfully!")
       setIsCreateOrgModalOpen(false)
       setOrgModalView('choice')
       setNewOrgName("")
     } catch (error: any) {
       console.error(error)
-      toast.error(error.message || "Failed to create workspace")
+      toast.error(error.message || "Failed to create organization")
     } finally {
       setCreatingOrg(false)
     }
@@ -1300,7 +1579,13 @@ export function AppSidebar() {
                 className="w-full h-full object-cover"
               />
             </div>
-            <span className="text-lg font-black tracking-tighter text-[#dbdbdb] uppercase">Posted</span>
+            <span className="text-lg font-black tracking-tighter text-[#dbdbdb] uppercase flex-1">Posted</span>
+            <button
+              onClick={toggleSidebar}
+              className="size-7 flex items-center justify-center rounded-md text-[#dbdbdb]/40 hover:text-[#dbdbdb] hover:bg-zinc-800 transition-all"
+            >
+              <PanelLeftClose className="size-4" />
+            </button>
           </div>
 
           <div className="px-1 pb-2">
@@ -1515,6 +1800,8 @@ export function AppSidebar() {
                             isDraggingRef={isDraggingRef}
                             isOver={overId === sortId}
                             dropPosition={overId === sortId ? dropPosition : null}
+                            onRename={handleRenameBrand}
+                            onDelete={handleDeleteBrand}
                           />
                         )
                       } else {
@@ -1537,6 +1824,7 @@ export function AppSidebar() {
                             onDelete={handleDeleteAccount}
                             onDuplicate={handleDuplicateAccount}
                             onStatusChange={handleStatusChange}
+                            onRename={handleRenameAccount}
                           />
                         )
                       }
@@ -2034,7 +2322,7 @@ export function AppSidebar() {
                 <div className="space-y-1 text-center">
                   <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Get Started</DialogTitle>
                   <DialogDescription className="text-[#dbdbdb]/60">
-                    Create a new workspace or join an existing one to start creating content.
+                    Create a new organization or join an existing one to start creating content.
                   </DialogDescription>
                 </div>
               </DialogHeader>
@@ -2053,7 +2341,7 @@ export function AppSidebar() {
                     />
                   </div>
                   <div className="text-left">
-                    <div className="font-semibold">Create Workspace</div>
+                    <div className="font-semibold">Create Organization</div>
                     <div className="text-xs text-[#171717]/60 font-normal">Start fresh with your own team</div>
                   </div>
                 </Button>
@@ -2066,7 +2354,7 @@ export function AppSidebar() {
                     <Users className="size-5 text-[#dbdbdb]" />
                   </div>
                   <div className="text-left">
-                    <div className="font-semibold text-[#dbdbdb]">Join Workspace</div>
+                    <div className="font-semibold text-[#dbdbdb]">Join Organization</div>
                     <div className="text-xs text-[#dbdbdb]/60 font-normal">You've been invited to a team</div>
                   </div>
                 </Button>
@@ -2096,15 +2384,15 @@ export function AppSidebar() {
                   </div>
                 </div>
                 <div className="space-y-1 text-center">
-                  <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Create Workspace</DialogTitle>
+                  <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Create Organization</DialogTitle>
                   <DialogDescription className="text-[#dbdbdb]/60">
-                    Give your workspace a name to get started.
+                    Give your organization a name to get started.
                   </DialogDescription>
                 </div>
               </DialogHeader>
               <div className="grid gap-4 py-6">
                 <div className="space-y-2">
-                  <Label htmlFor="org-name" className="text-sm font-semibold ml-1 text-[#dbdbdb]">Workspace Name</Label>
+                  <Label htmlFor="org-name" className="text-sm font-semibold ml-1 text-[#dbdbdb]">Organization Name</Label>
                   <Input
                     id="org-name"
                     placeholder="Acme Content"
@@ -2122,7 +2410,7 @@ export function AppSidebar() {
                   className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
                   disabled={creatingOrg || !newOrgName.trim()}
                 >
-                  {creatingOrg ? "Creating..." : "Create Workspace"}
+                  {creatingOrg ? "Creating..." : "Create Organization"}
                 </Button>
               </div>
             </form>
@@ -2144,7 +2432,7 @@ export function AppSidebar() {
                   </div>
                 </div>
                 <div className="space-y-1 text-center">
-                  <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Join Workspace</DialogTitle>
+                  <DialogTitle className="text-xl font-bold tracking-tight text-[#dbdbdb]">Join Organization</DialogTitle>
                   <DialogDescription className="text-[#dbdbdb]/60">
                     Ask your team admin to send you an invite link, or enter your invite code below.
                   </DialogDescription>
@@ -2164,7 +2452,7 @@ export function AppSidebar() {
                 </div>
                 <div className="rounded-xl bg-zinc-900/50 p-4 border border-zinc-700">
                   <p className="text-xs text-[#dbdbdb]/60 leading-relaxed">
-                    <strong className="text-[#dbdbdb]">Don't have an invite?</strong> Ask your workspace admin to invite you from their Settings page. You'll receive an email with a link to join.
+                    <strong className="text-[#dbdbdb]">Don't have an invite?</strong> Ask your organization admin to invite you from their Settings page. You'll receive an email with a link to join.
                   </p>
                 </div>
               </div>
@@ -2174,7 +2462,7 @@ export function AppSidebar() {
                   className="w-full h-11 bg-[#ddfc7b] text-[#171717] hover:bg-[#ddfc7b]/90 transition-all font-semibold rounded-xl"
                   disabled={creatingOrg || !inviteCode.trim()}
                 >
-                  {creatingOrg ? "Joining..." : "Join Workspace"}
+                  {creatingOrg ? "Joining..." : "Join Organization"}
                 </Button>
               </div>
             </form>

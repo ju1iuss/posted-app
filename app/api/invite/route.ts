@@ -22,7 +22,7 @@ export async function POST(request: Request) {
             Hi there,
           </p>
           <p style="font-size: 16px; line-height: 1.5;">
-            <strong>${inviterName || 'Someone'}</strong> has invited you to join their workspace <strong>${orgName}</strong> on Posted.
+            <strong>${inviterName || 'Someone'}</strong> has invited you to join their organization <strong>${orgName}</strong> on Posted.
           </p>
           <div style="background-color: #2a2a2a; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #3f3f46;">
             <p style="margin: 0; font-size: 14px; color: #a1a1aa; text-transform: uppercase; font-weight: 900; letter-spacing: 0.1em;">Your Invite Code</p>

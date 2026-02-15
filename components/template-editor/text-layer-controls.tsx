@@ -15,7 +15,7 @@ import { Slider } from '@/components/ui/slider'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { TemplateLayer, FontFamily, FontWeight, TextAlign } from './types'
-import { FONT_FAMILIES, FONT_WEIGHTS, TEXT_ALIGNS, MIN_FONT_SIZE, MAX_FONT_SIZE, MIN_STROKE_WIDTH, MAX_STROKE_WIDTH } from './constants'
+import { FONT_FAMILIES, FONT_WEIGHTS, TEXT_ALIGNS, MIN_FONT_SIZE, MAX_FONT_SIZE, MIN_STROKE_WIDTH, MAX_STROKE_WIDTH, DEFAULT_STROKE_WIDTH } from './constants'
 
 interface TextLayerControlsProps {
   layer: TemplateLayer
@@ -28,7 +28,7 @@ export function TextLayerControls({ layer, onUpdate, readOnly }: TextLayerContro
     if (preset === 'basic') {
       onUpdate({ text_color: '#ffffff', stroke_width: 0, background_color: null })
     } else if (preset === 'border') {
-      onUpdate({ text_color: '#ffffff', stroke_width: 4, stroke_color: '#000000', background_color: null })
+      onUpdate({ text_color: '#ffffff', stroke_width: DEFAULT_STROKE_WIDTH, stroke_color: '#000000', background_color: null })
     } else if (preset === 'pill') {
       onUpdate({ text_color: '#000000', background_color: '#ffffff', stroke_width: 0 })
     }
@@ -276,7 +276,7 @@ export function TextLayerControls({ layer, onUpdate, readOnly }: TextLayerContro
             {['#000000', '#ffffff', '#ff0000', '#ddfc7b'].map((color) => (
               <button
                 key={color}
-                onClick={() => onUpdate({ stroke_color: color, stroke_width: layer.stroke_width || 2 })}
+                onClick={() => onUpdate({ stroke_color: color, stroke_width: layer.stroke_width || DEFAULT_STROKE_WIDTH })}
                 className={cn(
                   "size-5 rounded-full border border-zinc-700 transition-transform hover:scale-110",
                   layer.stroke_color === color && "ring-2 ring-blue-500 ring-offset-1 ring-offset-zinc-900"
