@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Trash2,
   CheckSquare,
+  Download,
   Square,
   X,
   Minus
@@ -59,6 +60,8 @@ import { TemplateSelectorModal } from "@/components/template-selector-modal"
 import { CreditLimitModal } from "@/components/credit-limit-modal"
 import { PostCarouselCard } from "@/components/post-carousel-card"
 import { PostPreviewModal } from "@/components/post-preview-modal"
+import { saveAs } from "file-saver"
+import { exportCarouselPostsBulk } from "@/lib/export-carousel-post"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -613,6 +616,35 @@ export default function AccountPage() {
     }
   }
 
+  const handleBulkDownload = async (exportType: 'separate' | 'with-text' | 'first-slide-separate') => {
+    if (selectedPostIds.size === 0) return
+    const toExport = posts.filter(p => selectedPostIds.has(p.id) && p.type === 'carousel' && p.content)
+    if (toExport.length === 0) {
+      toast.error('No carousel posts selected to download')
+      return
+    }
+    setBulkExporting(true)
+    toast.info(`Preparing ${toExport.length} post(s)...`)
+    try {
+      const masterBlob = await exportCarouselPostsBulk(
+        supabase,
+        toExport.map(p => ({ id: p.id, content: p.content, title: p.title || '', caption: p.caption || '' })),
+        exportType,
+        (current, total) => {
+          toast.info(`Exporting post ${current}/${total}...`, { id: 'bulk-progress' })
+        }
+      )
+      const timestamp = new Date().toISOString().slice(0, 10)
+      saveAs(masterBlob, `posts-bulk-${timestamp}.zip`)
+      toast.success(`${toExport.length} post(s) downloaded`)
+    } catch (error: any) {
+      console.error('Bulk export error:', error)
+      toast.error(error.message || 'Failed to export posts')
+    } finally {
+      setBulkExporting(false)
+    }
+  }
+
   // Only show full skeleton on initial load (no account data yet)
   if (loading && !account) {
     return (
@@ -944,9 +976,10 @@ export default function AccountPage() {
         </div>
 
         {/* Tabs Section */}
-        <div className="flex border-b border-border/60 mb-0 mt-4">
-          <button
-            onClick={() => setActiveTab("videos")}
+        <div className="flex items-center justify-between border-b border-border/60 mb-0 mt-4">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab("videos")}
             className={`flex items-center gap-2 px-6 py-1 font-bold text-sm border-b-2 transition-all ${
               activeTab === "videos"
                 ? "border-foreground text-foreground"
@@ -966,6 +999,16 @@ export default function AccountPage() {
             <Lock className="size-3.5" />
             Liked
           </button>
+          </div>
+          {!selectMode && posts.filter(p => !p.isLoading).length > 0 && (
+            <button
+              onClick={() => setSelectMode(true)}
+              className="h-7 px-2.5 -mb-px rounded-t-md bg-zinc-800 hover:bg-zinc-700 border border-b-0 border-zinc-700 flex items-center gap-1.5 text-[10px] font-bold text-[#dbdbdb] transition-colors uppercase tracking-wider"
+            >
+              <CheckSquare className="size-3.5" />
+              Select
+            </button>
+          )}
         </div>
 
         {/* Bulk Actions Bar */}
@@ -994,7 +1037,38 @@ export default function AccountPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
-                  disabled={selectedPostIds.size === 0}
+                  disabled={selectedPostIds.size === 0 || bulkExporting}
+                  className="h-7 px-2.5 rounded-md bg-[#ddfc7b]/20 hover:bg-[#ddfc7b]/30 disabled:opacity-40 flex items-center gap-1.5 text-[10px] font-bold text-[#ddfc7b] transition-colors uppercase tracking-wider"
+                >
+                  {bulkExporting ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
+                  Download
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 rounded-xl bg-zinc-800 border-zinc-700">
+                <DropdownMenuItem
+                  onClick={() => handleBulkDownload('with-text')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                >
+                  With text (default)
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleBulkDownload('separate')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                >
+                  Images without text
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => handleBulkDownload('first-slide-separate')}
+                  className="text-[11px] font-bold text-[#dbdbdb] focus:bg-zinc-700"
+                >
+                  First slide without text
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  disabled={selectedPostIds.size === 0 || bulkExporting}
                   className="h-7 px-2.5 rounded-md bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 flex items-center gap-1.5 text-[10px] font-bold text-[#dbdbdb] transition-colors uppercase tracking-wider"
                 >
                   Status <ChevronDown className="size-3" />
@@ -1013,7 +1087,7 @@ export default function AccountPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             <button
-              disabled={selectedPostIds.size === 0 || bulkDeleting}
+              disabled={selectedPostIds.size === 0 || bulkDeleting || bulkExporting}
               onClick={handleBulkDelete}
               className="h-7 px-2.5 rounded-md bg-red-600/20 hover:bg-red-600/40 disabled:opacity-40 flex items-center gap-1.5 text-[10px] font-bold text-red-400 transition-colors uppercase tracking-wider"
             >
@@ -1088,19 +1162,6 @@ export default function AccountPage() {
               </div>
             </PopoverContent>
           </Popover>
-
-          {/* Select Mode Toggle - small card */}
-          {!selectMode && posts.filter(p => !p.isLoading).length > 0 && (
-            <div 
-              onClick={() => setSelectMode(true)}
-              className="group relative aspect-[3/4] cursor-pointer overflow-hidden bg-[#171717] border border-zinc-700 hover:border-zinc-600 transition-all flex flex-col items-center justify-center gap-2 hover:bg-zinc-900"
-            >
-              <div className="size-8 rounded-full bg-zinc-800 shadow-sm flex items-center justify-center text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors">
-                <CheckSquare className="size-5" />
-              </div>
-              <span className="text-xs font-bold text-[#dbdbdb]/60 group-hover:text-[#dbdbdb] transition-colors uppercase tracking-wider">Select</span>
-            </div>
-          )}
 
           {/* Post Cards */}
           {posts.map((post) => (

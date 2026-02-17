@@ -740,8 +740,8 @@ export function PostPreviewModal({
         {/* Action Buttons Below Phone */}
         <div className="flex items-center justify-center gap-3 pb-4 pt-2 z-50">
           {/* Status Selector */}
-          <Select value={status} onValueChange={(v) => handleStatusChange(v as PostStatus)}>
-            <SelectTrigger size="sm" className="w-32 !bg-zinc-800 border border-zinc-700 text-white text-sm hover:!bg-zinc-700 shadow-sm">
+          <Select value={status} onValueChange={(v) => handleStatusChange(v as PostStatus)} disabled={isExporting}>
+            <SelectTrigger size="sm" className="w-32 !bg-zinc-800 border border-zinc-700 text-white text-sm hover:!bg-zinc-700 shadow-sm disabled:opacity-50">
               <div className="flex items-center gap-2">
                 {status === 'posted' ? (
                   <CheckCircle2 className="size-3 text-green-400" />

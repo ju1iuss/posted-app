@@ -595,7 +595,10 @@ export function PostCarouselCard({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-40 rounded-xl bg-zinc-800 border-zinc-700" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700">
+              <DropdownMenuSubTrigger 
+                disabled={isExporting}
+                className="text-[11px] font-bold gap-2 text-[#dbdbdb] focus:text-[#dbdbdb] focus:bg-zinc-700 disabled:opacity-50 disabled:pointer-events-none"
+              >
                 {status === 'posted' ? <CheckCircle2 className="size-3 text-green-400" /> : <Circle className="size-3" />}
                 Status: {statusLabels[status]}
               </DropdownMenuSubTrigger>
@@ -673,11 +676,12 @@ export function PostCarouselCard({
             </DropdownMenuSub>
             <DropdownMenuSeparator className="bg-zinc-700" />
             <DropdownMenuItem 
+              disabled={isExporting}
               onClick={(e) => {
                 e.stopPropagation()
                 handleDelete(e)
               }}
-              className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-zinc-700"
+              className="text-[11px] font-bold gap-2 text-red-400 focus:text-red-400 focus:bg-zinc-700 disabled:opacity-50 disabled:pointer-events-none"
             >
               <Trash2 className="size-3" />
               Delete
